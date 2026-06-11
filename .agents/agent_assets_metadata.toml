@@ -1,0 +1,8 @@
+uploads = []
+generated = []
+
+[[outputs]]
+id = "yIdSTfJbQ8tUVElFZ9o8Q"
+uri = "file://syncbeat-source.tar.gz"
+type = "unspecified"
+title = "SyncBeat — Full Source Code"

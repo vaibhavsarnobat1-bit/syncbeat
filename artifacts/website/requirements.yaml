@@ -1,0 +1,14 @@
+packages:
+  "framer-motion": "For smooth page transitions and interactive micro-animations."
+  "date-fns": "For formatting chat message timestamps."
+  "zustand": "For simple global state management (user session, room state)."
+
+images:
+  - path: "artifacts/website/public/images/hero-abstract.png"
+    description: "Dark, moody abstract background with deep purple, magenta, and black gradients. Subtle soundwave or glowing neon line motifs to suggest a modern music listening app. Very sleek and premium."
+    aspect_ratio: "16:9"
+
+notes:
+  - WebSocket runs on the same host, path `/ws`, expecting query params `roomId`, `userId`, `displayName`.
+  - The frontend uses `zustand` to persist the user session in `localStorage` (`lt_user`).
+  - YouTube IFrame API is loaded dynamically by the `YouTubePlayer` component.

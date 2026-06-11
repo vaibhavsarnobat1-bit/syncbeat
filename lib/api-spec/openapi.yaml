@@ -1,0 +1,188 @@
+openapi: 3.1.0
+info:
+  title: Api
+  version: 0.1.0
+  description: Listen Together API
+servers:
+  - url: /api
+    description: Base API path
+tags:
+  - name: health
+    description: Health operations
+  - name: rooms
+    description: Room operations
+  - name: auth
+    description: Auth operations
+paths:
+  /healthz:
+    get:
+      operationId: healthCheck
+      tags: [health]
+      summary: Health check
+      responses:
+        "200":
+          description: Healthy
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/HealthStatus"
+
+  /auth/anonymous:
+    post:
+      operationId: loginAnonymous
+      tags: [auth]
+      summary: Login anonymously
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/AnonymousLoginRequest"
+      responses:
+        "200":
+          description: User session
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/UserSession"
+
+  /rooms:
+    post:
+      operationId: createRoom
+      tags: [rooms]
+      summary: Create a new room
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateRoomRequest"
+      responses:
+        "201":
+          description: Room created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Room"
+
+  /rooms/{inviteCode}:
+    get:
+      operationId: getRoom
+      tags: [rooms]
+      summary: Get room by invite code
+      parameters:
+        - name: inviteCode
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Room details
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Room"
+        "404":
+          description: Room not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+components:
+  schemas:
+    HealthStatus:
+      type: object
+      properties:
+        status:
+          type: string
+      required:
+        - status
+
+    AnonymousLoginRequest:
+      type: object
+      properties:
+        displayName:
+          type: string
+
+    UserSession:
+      type: object
+      properties:
+        userId:
+          type: string
+        displayName:
+          type: string
+        avatarColor:
+          type: string
+      required:
+        - userId
+        - displayName
+        - avatarColor
+
+    CreateRoomRequest:
+      type: object
+      properties:
+        name:
+          type: string
+        hostUserId:
+          type: string
+        hostDisplayName:
+          type: string
+      required:
+        - name
+        - hostUserId
+        - hostDisplayName
+
+    Room:
+      type: object
+      properties:
+        id:
+          type: string
+        name:
+          type: string
+        inviteCode:
+          type: string
+        hostUserId:
+          type: string
+        memberCount:
+          type: integer
+        currentTrack:
+          $ref: "#/components/schemas/Track"
+        isPlaying:
+          type: boolean
+        currentTime:
+          type: number
+      required:
+        - id
+        - name
+        - inviteCode
+        - hostUserId
+        - memberCount
+        - isPlaying
+        - currentTime
+
+    Track:
+      type: object
+      properties:
+        videoId:
+          type: string
+        title:
+          type: string
+        thumbnail:
+          type: string
+        duration:
+          type: number
+      required:
+        - videoId
+        - title
+        - thumbnail
+        - duration
+
+    ErrorResponse:
+      type: object
+      properties:
+        error:
+          type: string
+      required:
+        - error
