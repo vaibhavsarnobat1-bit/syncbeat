@@ -17,7 +17,7 @@ if (process.env.NODE_ENV === "production") {
   const publicPath = path.resolve(process.cwd(), "../website/dist/public");
   app.use(express.static(publicPath));
 
-  app.get("*", (_req, res) => {
+  app.use((_req, res) => {
     res.sendFile(path.resolve(publicPath, "index.html"));
   });
 }
