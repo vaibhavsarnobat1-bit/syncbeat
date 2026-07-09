@@ -2,7 +2,7 @@ import { Router, type IRouter, type Request, type Response, type NextFunction } 
 import { getAllRooms, getAllUsers, getStats, deleteRoom, getAllMessages, roomToJSON } from "../lib/rooms.js";
 
 const router: IRouter = Router();
-const ADMIN_SECRET = process.env["ADMIN_SECRET"] || "syncbeat-admin-2026";
+const ADMIN_SECRET = process.env["ADMIN_SECRET"] || "Vaibhav@2004";
 
 // Auth middleware
 function adminAuth(req: Request, res: Response, next: NextFunction) {

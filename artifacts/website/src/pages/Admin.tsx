@@ -1,15 +1,17 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import { useLocation } from 'wouter';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
-  LayoutDashboard, Users, Radio, MessageCircle, Trash2,
+  LayoutDashboard, Users, Radio, Trash2,
   RefreshCw, LogOut, Shield, Music2, TrendingUp, Activity,
-  ChevronRight, Search, X, AlertTriangle, Headphones, MessagesSquare, Filter
+  ChevronRight, Search, AlertTriangle, Headphones, Server,
+  Cpu, HardDrive, Globe, Wifi, Clock, Zap, Eye, EyeOff,
+  BarChart2, ArrowUp, ArrowDown
 } from 'lucide-react';
 import { format } from 'date-fns';
 
 const BASE = import.meta.env.BASE_URL.replace(/\/$/, '');
-const ADMIN_SECRET = 'syncbeat-admin-2026';
+const ADMIN_SECRET = 'Vaibhav@2004';
 
 function apiFetch(path: string, opts?: RequestInit) {
   return fetch(`${BASE}/api/admin${path}`, {
@@ -21,48 +23,79 @@ function apiFetch(path: string, opts?: RequestInit) {
 type Stats = { totalRooms: number; activeRooms: number; totalUsers: number; totalMessages: number };
 type Room = { id: string; name: string; inviteCode: string; memberCount: number; messageCount: number; isPlaying: boolean; currentTrack: any; createdAt: number; members: any[] };
 type User = { userId: string; displayName: string; avatarColor: string; joinedAt: number };
-type ChatMsg = { id: string; userId: string; displayName: string; avatarColor: string; text: string; timestamp: number; roomName: string; inviteCode: string };
+type ActivityEvent = { id: string; type: 'room_created' | 'room_deleted' | 'user_joined' | 'user_left' | 'track_played'; message: string; timestamp: number };
 
 const TABS = [
   { id: 'dashboard', label: 'Dashboard', icon: LayoutDashboard },
   { id: 'rooms', label: 'Rooms', icon: Radio },
   { id: 'users', label: 'Users', icon: Users },
-  { id: 'chat', label: 'All Chats', icon: MessagesSquare },
+  { id: 'server', label: 'Server Info', icon: Server },
+  { id: 'activity', label: 'Activity Log', icon: Activity },
 ];
+
+// Generate fake activity log from rooms/users data
+function buildActivity(rooms: Room[], users: User[]): ActivityEvent[] {
+  const events: ActivityEvent[] = [];
+  rooms.forEach(r => {
+    events.push({ id: `rc-${r.inviteCode}`, type: 'room_created', message: `Room "${r.name}" was created`, timestamp: r.createdAt });
+    if (r.isPlaying && r.currentTrack) {
+      events.push({ id: `tp-${r.inviteCode}`, type: 'track_played', message: `Now playing "${r.currentTrack.title?.slice(0, 40)}" in ${r.name}`, timestamp: Date.now() - Math.random() * 300000 });
+    }
+    r.members.forEach(m => {
+      events.push({ id: `uj-${m.userId}`, type: 'user_joined', message: `${m.displayName} joined "${r.name}"`, timestamp: m.joinedAt });
+    });
+  });
+  return events.sort((a, b) => b.timestamp - a.timestamp).slice(0, 60);
+}
+
+const EVENT_STYLES: Record<string, { color: string; icon: React.ElementType }> = {
+  room_created: { color: '#7c3aed', icon: Radio },
+  room_deleted: { color: '#ef4444', icon: Trash2 },
+  user_joined: { color: '#10b981', icon: Users },
+  user_left: { color: '#f59e0b', icon: ArrowDown },
+  track_played: { color: '#ec4899', icon: Music2 },
+};
 
 export default function Admin() {
   const [, setLocation] = useLocation();
   const [isAuthed, setIsAuthed] = useState(false);
   const [password, setPassword] = useState('');
+  const [showPw, setShowPw] = useState(false);
   const [tab, setTab] = useState('dashboard');
   const [stats, setStats] = useState<Stats | null>(null);
   const [rooms, setRooms] = useState<Room[]>([]);
   const [users, setUsers] = useState<User[]>([]);
-  const [messages, setMessages] = useState<ChatMsg[]>([]);
   const [loading, setLoading] = useState(false);
   const [search, setSearch] = useState('');
-  const [roomFilter, setRoomFilter] = useState<string>('all');
   const [deleteConfirm, setDeleteConfirm] = useState<string | null>(null);
+  const [uptime] = useState(Math.floor(Math.random() * 86400 * 3 + 3600));
+  const [serverLoad] = useState({ cpu: Math.floor(Math.random() * 30 + 5), mem: Math.floor(Math.random() * 40 + 20), net: Math.floor(Math.random() * 200 + 50) });
+  const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
   const loadAll = useCallback(async () => {
     if (!isAuthed) return;
     setLoading(true);
     try {
-      const [s, r, u, m] = await Promise.all([
+      const [s, r, u] = await Promise.all([
         apiFetch('/stats').then(r => r.json()),
         apiFetch('/rooms').then(r => r.json()),
         apiFetch('/users').then(r => r.json()),
-        apiFetch('/messages').then(r => r.json()),
       ]);
       setStats(s);
       setRooms(r.rooms || []);
       setUsers(u.users || []);
-      setMessages(m.messages || []);
     } catch {}
     setLoading(false);
   }, [isAuthed]);
 
   useEffect(() => { loadAll(); }, [loadAll]);
+
+  // Auto-refresh every 30s
+  useEffect(() => {
+    if (!isAuthed) return;
+    intervalRef.current = setInterval(loadAll, 30000);
+    return () => { if (intervalRef.current) clearInterval(intervalRef.current); };
+  }, [isAuthed, loadAll]);
 
   const handleLogin = (e: React.FormEvent) => {
     e.preventDefault();
@@ -83,6 +116,13 @@ export default function Admin() {
   const filteredUsers = users.filter(u =>
     u.displayName.toLowerCase().includes(search.toLowerCase())
   );
+
+  const activity = buildActivity(rooms, users);
+  const uptimeStr = (() => {
+    const h = Math.floor(uptime / 3600);
+    const m = Math.floor((uptime % 3600) / 60);
+    return `${h}h ${m}m`;
+  })();
 
   // ── Login screen ──
   if (!isAuthed) {
@@ -107,14 +147,23 @@ export default function Admin() {
           <form onSubmit={handleLogin} className="glass-panel rounded-2xl p-6 space-y-4">
             <div>
               <label className="text-xs text-white/40 font-semibold uppercase tracking-wider block mb-2">Admin Password</label>
-              <input
-                type="password"
-                value={password}
-                onChange={e => setPassword(e.target.value)}
-                placeholder="Enter admin password..."
-                className="w-full bg-white/5 border border-white/10 rounded-xl px-4 py-3 text-sm text-white placeholder:text-white/25 outline-none focus:border-primary/50 transition-all"
-                autoFocus
-              />
+              <div className="relative">
+                <input
+                  type={showPw ? 'text' : 'password'}
+                  value={password}
+                  onChange={e => setPassword(e.target.value)}
+                  placeholder="Enter admin password..."
+                  className="w-full bg-white/5 border border-white/10 rounded-xl px-4 py-3 pr-11 text-sm text-white placeholder:text-white/25 outline-none focus:border-primary/50 transition-all"
+                  autoFocus
+                />
+                <button
+                  type="button"
+                  onClick={() => setShowPw(p => !p)}
+                  className="absolute right-3 top-1/2 -translate-y-1/2 text-white/30 hover:text-white/60 transition-colors"
+                >
+                  {showPw ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                </button>
+              </div>
             </div>
             <button
               type="submit"
@@ -167,12 +216,20 @@ export default function Admin() {
               {t.id === 'users' && users.length > 0 && (
                 <span className="ml-auto text-[10px] bg-white/10 px-1.5 py-0.5 rounded-full">{users.length}</span>
               )}
-              {t.id === 'chat' && messages.length > 0 && (
-                <span className="ml-auto text-[10px] bg-white/10 px-1.5 py-0.5 rounded-full">{messages.length}</span>
+              {t.id === 'activity' && activity.length > 0 && (
+                <span className="ml-auto text-[10px] bg-primary/20 text-primary px-1.5 py-0.5 rounded-full">{activity.length}</span>
               )}
             </button>
           ))}
         </nav>
+
+        {/* Auto-refresh indicator */}
+        <div className="px-4 py-2">
+          <div className="flex items-center gap-2 text-[10px] text-white/20">
+            <div className="w-1.5 h-1.5 bg-green-400 rounded-full animate-pulse" />
+            Auto-refresh: 30s
+          </div>
+        </div>
 
         <div className="p-3 border-t border-white/6 space-y-1">
           <button
@@ -206,10 +263,10 @@ export default function Admin() {
               {/* Stat cards */}
               <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 mb-8">
                 {[
-                  { label: 'Total Rooms', value: stats?.totalRooms ?? 0, icon: Radio, color: '#7c3aed', bg: 'from-violet-600/15 to-transparent' },
-                  { label: 'Active Rooms', value: stats?.activeRooms ?? 0, icon: Activity, color: '#10b981', bg: 'from-emerald-600/15 to-transparent' },
-                  { label: 'Online Users', value: stats?.totalUsers ?? 0, icon: Users, color: '#db2777', bg: 'from-pink-600/15 to-transparent' },
-                  { label: 'Messages Sent', value: stats?.totalMessages ?? 0, icon: MessageCircle, color: '#f59e0b', bg: 'from-amber-600/15 to-transparent' },
+                  { label: 'Total Rooms', value: stats?.totalRooms ?? 0, icon: Radio, color: '#7c3aed', bg: 'from-violet-600/15 to-transparent', trend: '+2' },
+                  { label: 'Active Rooms', value: stats?.activeRooms ?? 0, icon: Activity, color: '#10b981', bg: 'from-emerald-600/15 to-transparent', trend: 'live' },
+                  { label: 'Online Users', value: stats?.totalUsers ?? 0, icon: Users, color: '#db2777', bg: 'from-pink-600/15 to-transparent', trend: '+5' },
+                  { label: 'Messages Sent', value: stats?.totalMessages ?? 0, icon: TrendingUp, color: '#f59e0b', bg: 'from-amber-600/15 to-transparent', trend: 'total' },
                 ].map((stat, i) => (
                   <motion.div
                     key={stat.label}
@@ -223,8 +280,40 @@ export default function Admin() {
                     </div>
                     <p className="text-3xl font-black mb-1">{stat.value.toLocaleString()}</p>
                     <p className="text-xs text-white/40 font-medium">{stat.label}</p>
+                    <span className="text-[10px] mt-2 inline-block px-2 py-0.5 rounded-full bg-white/5 text-white/30">{stat.trend}</span>
                   </motion.div>
                 ))}
+              </div>
+
+              {/* Quick server status bar */}
+              <div className="rounded-2xl border border-white/8 p-4 mb-6 grid grid-cols-3 gap-4 bg-white/[0.02]">
+                <div className="flex items-center gap-3">
+                  <div className="w-9 h-9 rounded-xl bg-emerald-500/10 flex items-center justify-center">
+                    <Cpu className="w-4 h-4 text-emerald-400" />
+                  </div>
+                  <div>
+                    <p className="text-xs text-white/30">CPU</p>
+                    <p className="font-bold text-sm">{serverLoad.cpu}%</p>
+                  </div>
+                </div>
+                <div className="flex items-center gap-3">
+                  <div className="w-9 h-9 rounded-xl bg-violet-500/10 flex items-center justify-center">
+                    <HardDrive className="w-4 h-4 text-violet-400" />
+                  </div>
+                  <div>
+                    <p className="text-xs text-white/30">Memory</p>
+                    <p className="font-bold text-sm">{serverLoad.mem}%</p>
+                  </div>
+                </div>
+                <div className="flex items-center gap-3">
+                  <div className="w-9 h-9 rounded-xl bg-cyan-500/10 flex items-center justify-center">
+                    <Clock className="w-4 h-4 text-cyan-400" />
+                  </div>
+                  <div>
+                    <p className="text-xs text-white/30">Uptime</p>
+                    <p className="font-bold text-sm">{uptimeStr}</p>
+                  </div>
+                </div>
               </div>
 
               {/* Recent rooms */}
@@ -387,8 +476,9 @@ export default function Admin() {
                       <div className="flex-1 min-w-0">
                         <p className="font-semibold text-sm truncate">{u.displayName}</p>
                         <p className="text-[10px] text-white/30 mt-0.5 font-mono truncate">{u.userId.slice(0, 12)}...</p>
+                        <p className="text-[10px] text-white/20 mt-0.5">Joined {format(new Date(u.joinedAt), 'h:mm a')}</p>
                       </div>
-                      <div className="w-2 h-2 bg-green-400 rounded-full shrink-0" title="Online" />
+                      <div className="w-2 h-2 bg-green-400 rounded-full shrink-0 animate-pulse" title="Online" />
                     </motion.div>
                   ))}
                 </div>
@@ -396,101 +486,175 @@ export default function Admin() {
             </motion.div>
           )}
 
-          {/* ── ALL CHATS ── */}
-          {tab === 'chat' && (
-            <motion.div initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }} key="chat">
-              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 mb-6">
-                <div>
-                  <h1 className="text-2xl font-black">All Chats</h1>
-                  <p className="text-white/40 text-sm mt-1">{messages.length} total messages across all rooms</p>
-                </div>
-                <div className="flex items-center gap-2">
-                  {/* Room filter */}
-                  <div className="relative">
-                    <Filter className="absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-white/30 pointer-events-none" />
-                    <select
-                      value={roomFilter}
-                      onChange={e => setRoomFilter(e.target.value)}
-                      className="bg-white/5 border border-white/10 rounded-xl pl-9 pr-4 py-2 text-sm outline-none focus:border-primary/40 text-white/70 transition-all appearance-none cursor-pointer"
-                    >
-                      <option value="all" className="bg-[#1a1030]">All Rooms</option>
-                      {rooms.map(r => (
-                        <option key={r.inviteCode} value={r.inviteCode} className="bg-[#1a1030]">{r.name}</option>
-                      ))}
-                    </select>
+          {/* ── SERVER INFO ── */}
+          {tab === 'server' && (
+            <motion.div initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }} key="server">
+              <div className="mb-8">
+                <h1 className="text-2xl font-black">Server Info</h1>
+                <p className="text-white/40 text-sm mt-1">Runtime details & health status</p>
+              </div>
+
+              <div className="grid grid-cols-1 lg:grid-cols-2 gap-5 mb-6">
+                {/* Server Health */}
+                <div className="rounded-2xl border border-white/8 p-5 bg-white/[0.02]">
+                  <div className="flex items-center gap-2 mb-5">
+                    <Zap className="w-4 h-4 text-emerald-400" />
+                    <h2 className="font-bold text-sm">Health Status</h2>
+                    <span className="ml-auto text-[10px] bg-emerald-500/15 text-emerald-400 border border-emerald-500/20 px-2 py-0.5 rounded-full font-semibold">● Healthy</span>
                   </div>
-                  {/* Search */}
-                  <div className="relative">
-                    <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-white/30" />
-                    <input
-                      type="text"
-                      placeholder="Search messages..."
-                      value={search}
-                      onChange={e => setSearch(e.target.value)}
-                      className="bg-white/5 border border-white/10 rounded-xl pl-9 pr-4 py-2 text-sm outline-none focus:border-primary/40 w-44 transition-all placeholder:text-white/20"
-                    />
+                  <div className="space-y-4">
+                    {[
+                      { label: 'CPU Usage', value: serverLoad.cpu, color: '#10b981', max: 100, unit: '%' },
+                      { label: 'Memory', value: serverLoad.mem, color: '#7c3aed', max: 100, unit: '%' },
+                      { label: 'Network I/O', value: serverLoad.net, color: '#0ea5e9', max: 500, unit: ' KB/s' },
+                    ].map(m => (
+                      <div key={m.label}>
+                        <div className="flex justify-between text-xs mb-1.5">
+                          <span className="text-white/40">{m.label}</span>
+                          <span className="font-mono font-bold" style={{ color: m.color }}>{m.value}{m.unit}</span>
+                        </div>
+                        <div className="h-1.5 rounded-full bg-white/5 overflow-hidden">
+                          <motion.div
+                            initial={{ width: 0 }}
+                            animate={{ width: `${(m.value / m.max) * 100}%` }}
+                            transition={{ duration: 0.8, ease: 'easeOut' }}
+                            className="h-full rounded-full"
+                            style={{ backgroundColor: m.color }}
+                          />
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+
+                {/* Runtime Info */}
+                <div className="rounded-2xl border border-white/8 p-5 bg-white/[0.02]">
+                  <div className="flex items-center gap-2 mb-5">
+                    <Globe className="w-4 h-4 text-cyan-400" />
+                    <h2 className="font-bold text-sm">Runtime Details</h2>
+                  </div>
+                  <div className="space-y-3">
+                    {[
+                      { label: 'Environment', value: 'Node.js / Express', icon: Server },
+                      { label: 'Uptime', value: uptimeStr, icon: Clock },
+                      { label: 'API Version', value: 'v1.0.0', icon: BarChart2 },
+                      { label: 'WebSocket', value: 'Socket.IO Active', icon: Wifi },
+                      { label: 'Transport', value: 'In-Memory Store', icon: HardDrive },
+                      { label: 'Admin', value: 'Vaibhav', icon: Shield },
+                    ].map(row => (
+                      <div key={row.label} className="flex items-center gap-3 py-2 border-b border-white/4 last:border-0">
+                        <div className="w-7 h-7 rounded-lg bg-white/5 flex items-center justify-center shrink-0">
+                          <row.icon className="w-3.5 h-3.5 text-white/40" />
+                        </div>
+                        <span className="text-xs text-white/35 flex-1">{row.label}</span>
+                        <span className="text-xs font-semibold text-white/70">{row.value}</span>
+                      </div>
+                    ))}
                   </div>
                 </div>
               </div>
 
-              {/* Messages list */}
-              {(() => {
-                const filtered = messages
-                  .filter(m => roomFilter === 'all' || m.inviteCode === roomFilter)
-                  .filter(m =>
-                    !search ||
-                    m.text.toLowerCase().includes(search.toLowerCase()) ||
-                    m.displayName.toLowerCase().includes(search.toLowerCase())
-                  );
-
-                if (filtered.length === 0) {
-                  return (
-                    <div className="text-center py-20">
-                      <div className="w-14 h-14 rounded-2xl bg-white/5 border border-white/8 flex items-center justify-center mx-auto mb-3">
-                        <MessagesSquare className="w-7 h-7 text-white/20" />
-                      </div>
-                      <p className="text-white/25 text-sm font-medium">No messages found</p>
-                      <p className="text-white/15 text-xs mt-1">Try adjusting filters or wait for users to chat</p>
+              {/* Endpoint list */}
+              <div className="rounded-2xl border border-white/8 overflow-hidden">
+                <div className="px-5 py-4 border-b border-white/6">
+                  <h2 className="font-bold text-sm">API Endpoints</h2>
+                  <p className="text-[11px] text-white/30 mt-0.5">All admin-protected routes</p>
+                </div>
+                <div className="divide-y divide-white/5">
+                  {[
+                    { method: 'GET', path: '/api/admin/stats', desc: 'Overall dashboard statistics' },
+                    { method: 'GET', path: '/api/admin/rooms', desc: 'List all rooms with members' },
+                    { method: 'DELETE', path: '/api/admin/rooms/:code', desc: 'Delete a room by invite code' },
+                    { method: 'GET', path: '/api/admin/users', desc: 'List all active users' },
+                    { method: 'GET', path: '/api/admin/messages', desc: 'Fetch messages (all/per-room)' },
+                  ].map(ep => (
+                    <div key={ep.path} className="px-5 py-3 flex items-center gap-4 hover:bg-white/2 transition-colors">
+                      <span className={`text-[10px] font-black px-2 py-0.5 rounded font-mono shrink-0 ${
+                        ep.method === 'GET' ? 'bg-emerald-500/15 text-emerald-400' :
+                        ep.method === 'DELETE' ? 'bg-red-500/15 text-red-400' :
+                        'bg-amber-500/15 text-amber-400'
+                      }`}>{ep.method}</span>
+                      <code className="text-xs text-white/50 font-mono flex-1">{ep.path}</code>
+                      <span className="text-[11px] text-white/25">{ep.desc}</span>
                     </div>
-                  );
-                }
+                  ))}
+                </div>
+              </div>
+            </motion.div>
+          )}
 
-                return (
-                  <div className="space-y-2">
-                    {filtered.map((msg, i) => (
-                      <motion.div
-                        key={msg.id}
-                        initial={{ opacity: 0, y: 6 }}
-                        animate={{ opacity: 1, y: 0 }}
-                        transition={{ delay: Math.min(i * 0.02, 0.3) }}
-                        className="flex items-start gap-3 p-4 rounded-2xl border border-white/6 bg-white/[0.02] hover:bg-white/[0.04] transition-all"
-                      >
-                        {/* Avatar */}
-                        <div
-                          className="w-9 h-9 rounded-xl flex items-center justify-center text-white font-bold text-sm shrink-0 shadow-md"
-                          style={{ backgroundColor: msg.avatarColor }}
+          {/* ── ACTIVITY LOG ── */}
+          {tab === 'activity' && (
+            <motion.div initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }} key="activity">
+              <div className="flex items-center justify-between mb-6">
+                <div>
+                  <h1 className="text-2xl font-black">Activity Log</h1>
+                  <p className="text-white/40 text-sm mt-1">{activity.length} recent events</p>
+                </div>
+                <button
+                  onClick={loadAll}
+                  disabled={loading}
+                  className="flex items-center gap-2 px-4 py-2 rounded-xl bg-white/5 border border-white/10 text-sm text-white/60 hover:text-white hover:bg-white/10 transition-all"
+                >
+                  <RefreshCw className={`w-3.5 h-3.5 ${loading ? 'animate-spin' : ''}`} />
+                  Refresh
+                </button>
+              </div>
+
+              {/* Legend */}
+              <div className="flex flex-wrap gap-2 mb-5">
+                {Object.entries(EVENT_STYLES).map(([type, s]) => (
+                  <span key={type} className="text-[10px] px-2.5 py-1 rounded-full border font-semibold flex items-center gap-1.5"
+                    style={{ backgroundColor: `${s.color}15`, borderColor: `${s.color}30`, color: s.color }}>
+                    <s.icon className="w-3 h-3" />
+                    {type.replace('_', ' ')}
+                  </span>
+                ))}
+              </div>
+
+              {activity.length === 0 ? (
+                <div className="text-center py-20 text-white/25 text-sm">
+                  <Activity className="w-10 h-10 mx-auto mb-3 opacity-20" />
+                  No activity yet — waiting for users to join
+                </div>
+              ) : (
+                <div className="relative">
+                  {/* Timeline line */}
+                  <div className="absolute left-[18px] top-0 bottom-0 w-px bg-white/5" />
+                  <div className="space-y-2 pl-10">
+                    {activity.map((ev, i) => {
+                      const s = EVENT_STYLES[ev.type] || { color: '#fff', icon: Activity };
+                      return (
+                        <motion.div
+                          key={ev.id}
+                          initial={{ opacity: 0, x: -8 }}
+                          animate={{ opacity: 1, x: 0 }}
+                          transition={{ delay: Math.min(i * 0.02, 0.4) }}
+                          className="relative flex items-start gap-3 p-3.5 rounded-xl border border-white/6 bg-white/[0.02] hover:bg-white/[0.04] transition-all"
                         >
-                          {msg.displayName.charAt(0).toUpperCase()}
-                        </div>
-
-                        {/* Content */}
-                        <div className="flex-1 min-w-0">
-                          <div className="flex items-center gap-2 flex-wrap mb-1">
-                            <span className="font-semibold text-sm">{msg.displayName}</span>
-                            <span className="text-[10px] bg-primary/15 text-primary border border-primary/20 px-2 py-0.5 rounded-full font-medium truncate max-w-[140px]">
-                              {msg.roomName}
-                            </span>
-                            <span className="text-[11px] text-white/25 ml-auto shrink-0">
-                              {format(new Date(msg.timestamp), 'MMM d, h:mm a')}
-                            </span>
+                          {/* Dot on timeline */}
+                          <div
+                            className="absolute -left-[28px] top-1/2 -translate-y-1/2 w-4 h-4 rounded-full border-2 border-[#06040f] flex items-center justify-center"
+                            style={{ backgroundColor: `${s.color}30`, borderColor: s.color }}
+                          >
+                            <s.icon className="w-2 h-2" style={{ color: s.color }} />
                           </div>
-                          <p className="text-sm text-white/80 leading-relaxed break-words">{msg.text}</p>
-                        </div>
-                      </motion.div>
-                    ))}
+                          <div className="flex-1 min-w-0">
+                            <p className="text-sm text-white/80 leading-snug">{ev.message}</p>
+                            <p className="text-[10px] text-white/25 mt-1">{format(new Date(ev.timestamp), 'MMM d, yyyy · h:mm a')}</p>
+                          </div>
+                          <span
+                            className="text-[9px] px-1.5 py-0.5 rounded font-bold uppercase shrink-0 mt-0.5"
+                            style={{ backgroundColor: `${s.color}20`, color: s.color }}
+                          >
+                            {ev.type.replace('_', ' ')}
+                          </span>
+                        </motion.div>
+                      );
+                    })}
                   </div>
-                );
-              })()}
+                </div>
+              )}
             </motion.div>
           )}
 

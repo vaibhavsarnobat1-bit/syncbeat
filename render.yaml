@@ -1,0 +1,25 @@
+services:
+  - type: web
+    name: syncbeat
+    env: node
+    region: oregon
+    plan: free
+    buildCommand: npm install -g pnpm && pnpm install && pnpm run build
+    startCommand: cd artifacts/api-server && node dist/index.cjs
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: PORT
+        value: 3001
+      - key: DATABASE_URL
+        fromDatabase:
+          name: syncbeat-db
+          property: connectionString
+      - key: ADMIN_SECRET
+        value: Vaibhav@2004
+
+databases:
+  - name: syncbeat-db
+    databaseName: syncbeat
+    user: syncbeat
+    plan: free
