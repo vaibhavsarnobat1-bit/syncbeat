@@ -1,3 +1,4 @@
+
 import { Router, type IRouter } from "express";
 import { nanoid } from "nanoid";
 import { LoginAnonymousBody, LoginAnonymousResponse } from "@workspace/api-zod";
@@ -17,3 +18,5 @@ router.post("/anonymous", (req, res) => {
 });
 
 export default router;
+
+

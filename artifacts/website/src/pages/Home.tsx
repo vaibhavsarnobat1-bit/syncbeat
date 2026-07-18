@@ -80,6 +80,29 @@ function StepCard({ num, title, desc, delay = 0 }: { num: string; title: string;
   );
 }
 
+function EqualizerAnimation() {
+  return (
+    <div className="flex items-end gap-1.5 h-12 opacity-80 justify-center mb-8">
+      {[...Array(16)].map((_, i) => (
+        <motion.div
+          key={i}
+          className="w-2.5 rounded-full bg-gradient-to-t from-primary to-accent"
+          animate={{ height: ['20%', '100%', '40%', '80%', '30%', '90%', '20%'] }}
+          transition={{
+            duration: 1.5,
+            repeat: Infinity,
+            ease: "easeInOut",
+            delay: i * 0.1,
+          }}
+          style={{
+            boxShadow: '0 0 10px rgba(0, 212, 212, 0.4)'
+          }}
+        />
+      ))}
+    </div>
+  );
+}
+
 export default function Home() {
   const [, setLocation] = useLocation();
 
@@ -108,12 +131,13 @@ export default function Home() {
       </nav>
 
       {/* ─── HERO ─── */}
-      <section className="relative min-h-screen flex flex-col items-center justify-center pt-16 px-4 overflow-hidden">
+      <section className="relative min-h-[110vh] flex flex-col items-center justify-center pt-24 px-4 overflow-hidden">
         <div
           className="absolute inset-0 z-0"
           style={{
             backgroundImage: `
-              linear-gradient(to bottom, rgba(7,5,17,0.5) 0%, rgba(7,5,17,0.7) 40%, rgba(7,5,17,1) 100%),
+              radial-gradient(circle at 50% 0%, rgba(0, 212, 212, 0.15) 0%, transparent 50%),
+              linear-gradient(to bottom, rgba(7,5,17,0.7) 0%, rgba(7,5,17,0.85) 40%, rgba(7,5,17,1) 100%),
               url('https://images.unsplash.com/photo-1470225620780-dba8ba36b745?w=1400&q=70&auto=format&fit=crop')
             `,
             backgroundSize: 'cover',
@@ -121,64 +145,76 @@ export default function Home() {
           }}
         />
 
-        <div className="absolute top-[15%] left-[8%] w-[45%] h-[45%] bg-primary/20 blur-[140px] rounded-full animate-pulse-glow z-0" />
-        <div className="absolute bottom-[10%] right-[5%] w-[40%] h-[40%] bg-accent/15 blur-[160px] rounded-full animate-pulse-glow z-0" style={{ animationDelay: '2s' }} />
+        {/* Dynamic Orbs */}
+        <div className="absolute top-[20%] left-[10%] w-[400px] h-[400px] bg-primary/20 blur-[150px] rounded-full animate-pulse-glow z-0 mix-blend-screen" />
+        <div className="absolute bottom-[20%] right-[10%] w-[500px] h-[500px] bg-accent/20 blur-[150px] rounded-full animate-pulse-glow z-0 mix-blend-screen" style={{ animationDelay: '2s' }} />
 
-        <div className="absolute top-[20%] left-[6%] text-[88px] z-[2] animate-float pointer-events-none select-none opacity-80" style={{ filter: 'drop-shadow(0 0 22px rgba(0,212,212,0.50))' }}>🎵</div>
-        <div className="absolute top-[32%] right-[7%] text-[70px] z-[2] animate-float2 pointer-events-none select-none opacity-75" style={{ filter: 'drop-shadow(0 0 18px rgba(59,130,246,0.50))' }}>🎶</div>
-        <div className="absolute bottom-[26%] left-[11%] text-[58px] z-[2] animate-float pointer-events-none select-none opacity-70" style={{ filter: 'drop-shadow(0 0 16px rgba(6,182,212,0.45))' }}>🎸</div>
-        <div className="absolute bottom-[36%] right-[5%] text-[63px] z-[2] animate-float-delayed pointer-events-none select-none opacity-70" style={{ filter: 'drop-shadow(0 0 18px rgba(14,165,233,0.45))' }}>🎤</div>
+        {/* Floating Elements */}
+        <motion.div animate={{ y: [-15, 15, -15], rotate: [-5, 5, -5] }} transition={{ repeat: Infinity, duration: 6, ease: "easeInOut" }} className="absolute top-[20%] left-[8%] text-[88px] z-[2] opacity-80" style={{ filter: 'drop-shadow(0 0 25px rgba(0,212,212,0.60))' }}>🎵</motion.div>
+        <motion.div animate={{ y: [15, -15, 15], rotate: [5, -5, 5] }} transition={{ repeat: Infinity, duration: 7, ease: "easeInOut" }} className="absolute top-[32%] right-[7%] text-[70px] z-[2] opacity-75" style={{ filter: 'drop-shadow(0 0 20px rgba(59,130,246,0.60))' }}>🎶</motion.div>
+        <motion.div animate={{ y: [-10, 20, -10], rotate: [-10, 10, -10] }} transition={{ repeat: Infinity, duration: 5, ease: "easeInOut" }} className="absolute bottom-[35%] left-[11%] text-[65px] z-[2] opacity-70" style={{ filter: 'drop-shadow(0 0 20px rgba(6,182,212,0.55))' }}>🎸</motion.div>
+        <motion.div animate={{ y: [20, -10, 20], rotate: [10, -10, 10] }} transition={{ repeat: Infinity, duration: 8, ease: "easeInOut" }} className="absolute bottom-[40%] right-[8%] text-[60px] z-[2] opacity-70" style={{ filter: 'drop-shadow(0 0 20px rgba(14,165,233,0.55))' }}>🎧</motion.div>
 
-        <div className="relative z-10 text-center max-w-4xl mx-auto">
+        <div className="relative z-10 text-center max-w-5xl mx-auto w-full">
           <motion.div
-            initial={{ opacity: 0, scale: 0.85 }}
+            initial={{ opacity: 0, scale: 0.8 }}
             animate={{ opacity: 1, scale: 1 }}
-            transition={{ duration: 0.5 }}
-            className="inline-flex items-center gap-2 px-4 py-2 rounded-full bg-primary/15 border border-primary/30 text-primary text-sm font-semibold mb-8"
+            transition={{ duration: 0.6, ease: "easeOut" }}
+            className="mb-8"
           >
-            <Music2 className="w-4 h-4" />
-            Listen music together — in real-time
+            <EqualizerAnimation />
+          </motion.div>
+
+          <motion.div
+            initial={{ opacity: 0, y: -20 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ duration: 0.5, delay: 0.2 }}
+            className="inline-flex items-center gap-2.5 px-5 py-2 rounded-full bg-white/5 border border-white/10 text-white font-semibold mb-8 backdrop-blur-md shadow-xl"
+          >
+            <div className="w-2 h-2 rounded-full bg-green-500 animate-pulse" />
+            Vibe together in real-time
           </motion.div>
 
           <motion.h1
             initial={{ opacity: 0, y: 30 }}
             animate={{ opacity: 1, y: 0 }}
-            transition={{ duration: 0.6, delay: 0.1 }}
-            className="text-5xl sm:text-6xl lg:text-8xl font-black leading-[1.04] tracking-tight mb-6"
+            transition={{ duration: 0.7, delay: 0.3 }}
+            className="text-6xl sm:text-7xl lg:text-8xl font-black leading-[1.05] tracking-tight mb-8 drop-shadow-2xl"
           >
             Music is better
             <br />
-            <span className="text-shimmer">together.</span>
+            <span className="text-transparent bg-clip-text bg-gradient-to-r from-primary via-blue-400 to-accent animate-gradient bg-[length:200%_auto]">
+              together.
+            </span>
           </motion.h1>
 
           <motion.p
             initial={{ opacity: 0, y: 20 }}
             animate={{ opacity: 1, y: 0 }}
-            transition={{ duration: 0.5, delay: 0.25 }}
-            className="text-lg sm:text-xl text-white/55 max-w-xl mx-auto leading-relaxed mb-10"
+            transition={{ duration: 0.6, delay: 0.45 }}
+            className="text-lg sm:text-2xl text-white/60 max-w-2xl mx-auto leading-relaxed mb-12"
           >
             Create a room, share a link, and enjoy perfectly synced music with your friends — anywhere in the world.
           </motion.p>
-
           <motion.div
             initial={{ opacity: 0, y: 20 }}
             animate={{ opacity: 1, y: 0 }}
-            transition={{ duration: 0.5, delay: 0.4 }}
-            className="flex flex-col sm:flex-row items-center justify-center gap-4"
+            transition={{ duration: 0.6, delay: 0.6 }}
+            className="flex flex-col sm:flex-row items-center justify-center gap-5"
           >
             <button
               onClick={() => setLocation('/login')}
-              className="group flex items-center gap-3 px-8 py-4 rounded-2xl bg-gradient-to-r from-primary to-accent hover:opacity-90 text-white font-black text-lg transition-all hover:scale-[1.03] shadow-2xl shadow-primary/35"
+              className="group flex items-center justify-center gap-3 w-full sm:w-auto px-10 py-5 rounded-2xl bg-gradient-to-r from-primary via-blue-500 to-accent text-white font-black text-xl transition-all hover:scale-[1.05] shadow-[0_0_40px_rgba(0,212,212,0.4)] hover:shadow-[0_0_60px_rgba(0,212,212,0.6)]"
             >
-              <Headphones className="w-6 h-6" />
+              <Headphones className="w-7 h-7" />
               Start Listening
-              <ArrowRight className="w-5 h-5 group-hover:translate-x-1 transition-transform" />
+              <ArrowRight className="w-6 h-6 group-hover:translate-x-1.5 transition-transform" />
             </button>
             <a
               href="#how"
-              className="flex items-center gap-2 px-8 py-4 rounded-2xl bg-white/8 hover:bg-white/12 border border-white/10 text-white font-bold text-base transition-all"
+              className="group flex items-center justify-center gap-2 w-full sm:w-auto px-10 py-5 rounded-2xl bg-white/5 hover:bg-white/10 border border-white/10 text-white font-bold text-xl transition-all backdrop-blur-md"
             >
-              How It Works <ChevronRight className="w-4 h-4" />
+              How It Works <ChevronRight className="w-5 h-5 group-hover:translate-x-1 transition-transform" />
             </a>
           </motion.div>
 

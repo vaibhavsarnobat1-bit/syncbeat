@@ -844,8 +844,8 @@ export default function RoomPage() {
             <div className="relative">
               {activeRoom.isPlaying && (
                 <div
-                  className="absolute -inset-1 bg-gradient-to-r from-cyan-400 to-blue-500 rounded-2xl blur-lg opacity-25 animate-pulse-glow"
-                  style={{ animationDuration: '4s' }}
+                  className="absolute -inset-3 bg-gradient-to-r from-blue-600 via-cyan-400 to-blue-500 rounded-2xl blur-2xl opacity-45 animate-pulse-glow"
+                  style={{ animationDuration: '3s' }}
                 />
               )}
               <div
@@ -853,7 +853,7 @@ export default function RoomPage() {
                 style={{
                   aspectRatio: '16/9',
                   boxShadow: activeRoom.isPlaying
-                    ? '0 0 30px rgba(0, 212, 212, 0.15)'
+                    ? '0 0 40px rgba(59, 130, 246, 0.35), 0 0 80px rgba(6, 182, 212, 0.15)'
                     : '0 10px 30px rgba(0,0,0,0.6)',
                 }}
               >

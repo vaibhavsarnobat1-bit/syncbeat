@@ -73,7 +73,7 @@ async function upsertRoomToDB(room: Room): Promise<void> {
         JSON.stringify(room.queue),
         JSON.stringify(room.history),
         room.isPlaying,
-        room.currentTime,
+        Math.round(room.currentTime),
         room.lastSyncAt,
       ]
     );
