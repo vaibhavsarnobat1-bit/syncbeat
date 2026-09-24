@@ -402,6 +402,17 @@
   animation: wave 1.2s ease-in-out infinite;
 }
 
+@keyframes soundwave {
+  0% {
+    transform: scaleY(0.3);
+    opacity: 0.55;
+  }
+  100% {
+    transform: scaleY(1);
+    opacity: 1;
+  }
+}
+
 /* ─── Gradient shimmer text ─── */
 .text-shimmer {
   background: linear-gradient(90deg, #fff 0%, #67e8f9 25%, #38bdf8 50%, #67e8f9 75%, #fff 100%);
@@ -427,4 +438,81 @@
   position: absolute !important;
   top: 0 !important; left: 0 !important;
   width: 100% !important; height: 100% !important;
+}
+
+/* ─── 3D Utilities & Animations ─── */
+.perspective-1000 {
+  perspective: 1000px;
+  transform-style: preserve-3d;
+}
+
+.preserve-3d {
+  transform-style: preserve-3d;
+}
+
+.backface-hidden {
+  backface-visibility: hidden;
+}
+
+/* 3D Vinyl Record Grooves */
+.vinyl-grooves {
+  background: repeating-radial-gradient(
+    circle at center,
+    #0d0f14 0,
+    #0d0f14 2px,
+    #171922 3px,
+    #171922 4px
+  );
+  box-shadow:
+    inset 0 0 15px rgba(255, 255, 255, 0.08),
+    0 12px 40px rgba(0, 0, 0, 0.8),
+    0 0 25px rgba(0, 212, 212, 0.25);
+}
+
+.vinyl-reflection {
+  background: conic-gradient(
+    from 45deg,
+    transparent 0deg,
+    rgba(255, 255, 255, 0.12) 40deg,
+    transparent 80deg,
+    transparent 180deg,
+    rgba(255, 255, 255, 0.12) 220deg,
+    transparent 260deg
+  );
+}
+
+@keyframes float-3d {
+  0%, 100% {
+    transform: translateY(0px) rotateX(0deg) rotateY(0deg);
+  }
+  50% {
+    transform: translateY(-12px) rotateX(4deg) rotateY(-4deg);
+  }
+}
+
+.animate-float-3d {
+  animation: float-3d 6s ease-in-out infinite;
+}
+
+@keyframes vinyl-spin {
+  from { transform: rotate(0deg); }
+  to { transform: rotate(360deg); }
+}
+
+.animate-vinyl-spin {
+  animation: vinyl-spin 4s linear infinite;
+}
+
+.animate-vinyl-spin-paused {
+  animation-play-state: paused;
+}
+
+@keyframes pulse-ring {
+  0% { transform: scale(0.95); opacity: 0.8; }
+  50% { transform: scale(1.08); opacity: 0.3; }
+  100% { transform: scale(0.95); opacity: 0.8; }
+}
+
+.animate-pulse-ring {
+  animation: pulse-ring 3s ease-in-out infinite;
 }

@@ -1,0 +1,33 @@
+{
+  "name": "SyncBeat — Listen Together",
+  "short_name": "SyncBeat",
+  "description": "Listen to music together in real-time with friends. Sync YouTube playback instantly.",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#060708",
+  "theme_color": "#06b6d4",
+  "orientation": "portrait-primary",
+  "icons": [
+    {
+      "src": "/logo.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "any maskable"
+    },
+    {
+      "src": "/logo.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any maskable"
+    }
+  ],
+  "categories": ["music", "entertainment", "social"],
+  "screenshots": [],
+  "shortcuts": [
+    {
+      "name": "Join a Room",
+      "url": "/lobby",
+      "description": "Browse and join music rooms"
+    }
+  ]
+}

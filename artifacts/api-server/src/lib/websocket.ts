@@ -88,6 +88,10 @@ export function setupWebSocket(server: Server) {
       avatarColor: m.avatarColor,
     }));
 
+    const currentComputedTime = room.isPlaying && room.lastSyncAt
+      ? room.currentTime + (Date.now() - room.lastSyncAt) / 1000
+      : room.currentTime;
+
     // Send full room state + complete chat history
     client.send(
       JSON.stringify({
@@ -102,7 +106,7 @@ export function setupWebSocket(server: Server) {
           queue: room.queue,
           history: room.history,
           isPlaying: room.isPlaying,
-          currentTime: room.currentTime,
+          currentTime: Math.max(0, currentComputedTime),
         },
         members,
         messages: room.messages,
@@ -148,22 +152,23 @@ export function setupWebSocket(server: Server) {
       // ── Playback ──
       } else if (msgType === "play") {
         room.isPlaying = true;
-        room.currentTime = Number(data.currentTime) || 0;
+        room.currentTime = Math.max(0, Number(data.currentTime) || 0);
         room.lastSyncAt = Date.now();
         updateRoomPlayback(room);
-        broadcast(roomId, { type: "play", currentTime: room.currentTime, timestamp: room.lastSyncAt }, userId);
+        broadcastAll(roomId, { type: "play", currentTime: room.currentTime, timestamp: room.lastSyncAt });
 
       } else if (msgType === "pause") {
         room.isPlaying = false;
-        room.currentTime = Number(data.currentTime) || 0;
-        updateRoomPlayback(room);
-        broadcast(roomId, { type: "pause", currentTime: room.currentTime }, userId);
-
-      } else if (msgType === "seek") {
-        room.currentTime = Number(data.currentTime) || 0;
+        room.currentTime = Math.max(0, Number(data.currentTime) || 0);
         room.lastSyncAt = Date.now();
         updateRoomPlayback(room);
-        broadcast(roomId, { type: "seek", currentTime: room.currentTime }, userId);
+        broadcastAll(roomId, { type: "pause", currentTime: room.currentTime, timestamp: room.lastSyncAt });
+
+      } else if (msgType === "seek") {
+        room.currentTime = Math.max(0, Number(data.currentTime) || 0);
+        room.lastSyncAt = Date.now();
+        updateRoomPlayback(room);
+        broadcastAll(roomId, { type: "seek", currentTime: room.currentTime, isPlaying: room.isPlaying, timestamp: room.lastSyncAt });
 
       // ── Track change ──
       } else if (msgType === "track_change") {
@@ -180,16 +185,19 @@ export function setupWebSocket(server: Server) {
         room.currentTrack = newTrack;
         room.isPlaying = true;
         room.currentTime = 0;
+        room.lastSyncAt = Date.now();
         updateRoomPlayback(room);
 
-        // System message in chat — "now playing"
+        // Instant broadcast to all clients immediately with zero delay
+        broadcastAll(roomId, {
+          type: "track_change",
+          track: room.currentTrack,
+          queue: room.queue,
+          history: room.history,
+        });
+
+        // Background system message in chat — "now playing"
         addSystemMessage(roomId, `🎵 Now Playing: ${newTrack.title}`).then((sysMsg) => {
-          broadcastAll(roomId, {
-            type: "track_change",
-            track: room.currentTrack,
-            queue: room.queue,
-            history: room.history,
-          });
           broadcastAll(roomId, { type: "chat", message: sysMsg });
         });
 
@@ -229,17 +237,34 @@ export function setupWebSocket(server: Server) {
         room.currentTrack = room.queue.shift()!;
         room.isPlaying = true;
         room.currentTime = 0;
+        room.lastSyncAt = Date.now();
         updateRoomPlayback(room);
 
+        // Instant broadcast to all clients immediately
+        broadcastAll(roomId, {
+          type: "track_change",
+          track: room.currentTrack,
+          queue: room.queue,
+          history: room.history,
+        });
+
         addSystemMessage(roomId, `⏭️ Skipped to: ${room.currentTrack.title}`).then((sysMsg) => {
-          broadcastAll(roomId, {
-            type: "track_change",
-            track: room.currentTrack,
-            queue: room.queue,
-            history: room.history,
-          });
           broadcastAll(roomId, { type: "chat", message: sysMsg });
         });
+
+      // ── Periodic Sync Heartbeat (Continuous Drift Correction) ──
+      } else if (msgType === "sync_tick") {
+        const curTime = Number(data.currentTime);
+        if (!Number.isNaN(curTime) && curTime >= 0) {
+          room.currentTime = curTime;
+          room.lastSyncAt = Date.now();
+          broadcast(roomId, {
+            type: "sync_tick",
+            currentTime: room.currentTime,
+            timestamp: room.lastSyncAt,
+            isPlaying: room.isPlaying,
+          }, userId);
+        }
 
       // ── Live emoji reaction ──
       } else if (msgType === "reaction") {
@@ -252,6 +277,30 @@ export function setupWebSocket(server: Server) {
           avatarColor,
           id: nanoid(6),
         });
+
+      // ── Voice & Video call state broadcast ──
+      } else if (msgType === "voice_state") {
+        broadcastAll(roomId, {
+          type: "voice_state",
+          userId,
+          displayName,
+          avatarColor,
+          inVoice: !!data.inVoice,
+          micMuted: !!data.micMuted,
+          videoEnabled: !!data.videoEnabled,
+        });
+
+      // ── WebRTC Peer Video Signaling ──
+      } else if (msgType === "webrtc_offer" || msgType === "webrtc_answer" || msgType === "webrtc_candidate") {
+        const targetUserId = data.targetUserId;
+        if (targetUserId) {
+          wss.clients.forEach((c) => {
+            const wsc = c as any;
+            if (wsc.roomInviteCode === roomId && wsc.userId === targetUserId && wsc.readyState === 1) {
+              wsc.send(JSON.stringify({ ...data, senderUserId: userId }));
+            }
+          });
+        }
 
       // ── Delete room (host only) ──
       } else if (msgType === "delete_room") {

@@ -33,11 +33,11 @@ export function Navbar() {
           {/* Logo */}
           <Link href="/">
             <a className="flex items-center gap-2 group">
-              <div className="w-8 h-8 rounded-lg bg-primary flex items-center justify-center text-primary-foreground font-bold text-xl transition-transform group-hover:scale-105">
-                V
+              <div className="w-8 h-8 rounded-lg overflow-hidden border border-cyan-400/30 shadow-md shadow-cyan-500/20 group-hover:scale-105 transition-transform">
+                <img src="/logo.png" alt="SyncBeat Logo" className="w-full h-full object-cover" />
               </div>
               <span className="font-display font-bold text-xl tracking-tight text-foreground">
-                Vertex
+                SyncBeat
               </span>
             </a>
           </Link>

@@ -2,6 +2,18 @@ import { useEffect, useRef, useState, useCallback } from 'react';
 import type { Room, Track } from '@workspace/api-client-react';
 import { useAuthStore } from '@/lib/store';
 
+/** Fire browser notification when offline and a friend changes track */
+export function fireOfflineTrackNotification(friendName: string, trackTitle?: string, roomName?: string) {
+  const title = '🎵 SyncBeat — Friend Played YouTube Song!';
+  const body = trackTitle
+    ? `Your friend played "${trackTitle}" in the room. Please turn on your internet connection to sync and listen together!`
+    : `Your friend played a YouTube song in the room. Please turn on your internet connection to sync and listen together!`;
+  if ('Notification' in window && Notification.permission === 'granted') {
+    new Notification(title, { body, icon: '/logo.png', badge: '/logo.png', tag: 'offline-track', requireInteraction: true });
+  }
+  if ('vibrate' in navigator) navigator.vibrate([200, 100, 200]);
+}
+
 export type ChatMessage = {
   id: string;
   userId: string;
@@ -26,17 +38,27 @@ export type FloatingReaction = {
   avatarColor: string;
 };
 
+export type VoiceUserState = {
+  inVoice: boolean;
+  micMuted: boolean;
+  videoEnabled: boolean;
+  displayName: string;
+  avatarColor: string;
+};
+
 type WsIncomingMessage =
   | { type: 'room_state'; room: Room & { queue: Track[]; history: Track[] }; members: WsUser[]; messages: ChatMessage[] }
   | { type: 'chat'; message: ChatMessage }
   | { type: 'user_joined'; user: WsUser; memberCount: number }
   | { type: 'user_left'; userId: string; memberCount: number }
   | { type: 'play'; currentTime: number; timestamp: number }
-  | { type: 'pause'; currentTime: number }
-  | { type: 'seek'; currentTime: number }
+  | { type: 'pause'; currentTime: number; timestamp?: number }
+  | { type: 'seek'; currentTime: number; timestamp?: number }
+  | { type: 'sync_tick'; currentTime: number; timestamp?: number; isPlaying?: boolean }
   | { type: 'track_change'; track: Track; queue: Track[]; history: Track[] }
   | { type: 'queue_update'; queue: Track[]; addedBy?: string; addedTrack?: Track }
   | { type: 'reaction'; id: string; emoji: string; userId: string; displayName: string; avatarColor: string }
+  | { type: 'voice_state'; userId: string; displayName: string; avatarColor: string; inVoice: boolean; micMuted: boolean; videoEnabled: boolean }
   | { type: 'room_closed' }
   | { type: 'error'; message: string };
 
@@ -45,11 +67,13 @@ type WsOutgoingMessage =
   | { type: 'play'; currentTime: number }
   | { type: 'pause'; currentTime: number }
   | { type: 'seek'; currentTime: number }
-  | { type: 'track_change'; videoId: string; title: string; thumbnail: string; duration: number }
-  | { type: 'queue_add'; videoId: string; title: string; thumbnail: string; duration: number }
+  | { type: 'sync_tick'; currentTime: number; timestamp?: number }
+  | { type: 'track_change'; videoId: string; title: string; thumbnail?: string; duration?: number }
+  | { type: 'queue_add'; videoId: string; title: string; thumbnail?: string; duration?: number }
   | { type: 'queue_remove'; videoId: string }
   | { type: 'queue_skip' }
   | { type: 'reaction'; emoji: string }
+  | { type: 'voice_state'; inVoice: boolean; micMuted: boolean; videoEnabled: boolean }
   | { type: 'delete_room' };
 
 const MAX_RETRIES = 5;
@@ -71,8 +95,9 @@ export function useWebSocket(roomId: string | undefined) {
   const [queue, setQueue] = useState<Track[]>([]);
   const [history, setHistory] = useState<Track[]>([]);
   const [reactions, setReactions] = useState<FloatingReaction[]>([]);
+  const [voiceStates, setVoiceStates] = useState<Record<string, VoiceUserState>>({});
   const [remotePlayerState, setRemotePlayerState] = useState<{
-    action: 'play' | 'pause' | 'seek';
+    action: 'play' | 'pause' | 'seek' | 'sync_tick';
     currentTime: number;
     timestamp: number;
   } | null>(null);
@@ -135,21 +160,49 @@ export function useWebSocket(roomId: string | undefined) {
               break;
             case 'user_left':
               setMembers(prev => prev.filter(m => m.userId !== data.userId));
+              setVoiceStates(prev => {
+                const copy = { ...prev };
+                delete copy[data.userId];
+                return copy;
+              });
+              break;
+            case 'voice_state':
+              setVoiceStates(prev => ({
+                ...prev,
+                [data.userId]: {
+                  inVoice: data.inVoice,
+                  micMuted: data.micMuted,
+                  videoEnabled: data.videoEnabled,
+                  displayName: data.displayName,
+                  avatarColor: data.avatarColor,
+                }
+              }));
               break;
             case 'play':
-              setRemotePlayerState({ action: 'play', currentTime: data.currentTime, timestamp: data.timestamp });
+              setRemotePlayerState({ action: 'play', currentTime: data.currentTime, timestamp: data.timestamp || Date.now() });
               setRoom((prev: Room | null) => prev ? { ...prev, isPlaying: true, currentTime: data.currentTime } : null);
               break;
             case 'pause':
-              setRemotePlayerState({ action: 'pause', currentTime: data.currentTime, timestamp: Date.now() });
+              setRemotePlayerState({ action: 'pause', currentTime: data.currentTime, timestamp: data.timestamp || Date.now() });
               setRoom((prev: Room | null) => prev ? { ...prev, isPlaying: false, currentTime: data.currentTime } : null);
               break;
             case 'seek':
-              setRemotePlayerState({ action: 'seek', currentTime: data.currentTime, timestamp: Date.now() });
+              setRemotePlayerState({ action: 'seek', currentTime: data.currentTime, timestamp: data.timestamp || Date.now() });
+              setRoom((prev: Room | null) => prev ? { ...prev, currentTime: data.currentTime } : null);
+              break;
+            case 'sync_tick':
+              setRemotePlayerState({ action: 'sync_tick', currentTime: data.currentTime, timestamp: data.timestamp || Date.now() });
               setRoom((prev: Room | null) => prev ? { ...prev, currentTime: data.currentTime } : null);
               break;
             case 'track_change':
-              setRoom((prev: Room | null) => prev ? { ...prev, currentTrack: data.track, currentTime: 0, isPlaying: true } : null);
+              setRoom((prev: Room | null) => {
+                // Fire offline notification if user has no internet
+                if (!navigator.onLine) {
+                  // Find who changed track from members state (best effort)
+                  fireOfflineTrackNotification('A friend', data.track?.title);
+                }
+                return prev ? { ...prev, currentTrack: data.track, currentTime: 0, isPlaying: true } : null;
+              });
               if (data.queue !== undefined) setQueue(data.queue);
               if (data.history !== undefined) setHistory(data.history);
               break;
@@ -205,6 +258,7 @@ export function useWebSocket(roomId: string | undefined) {
     history,
     reactions,
     remotePlayerState,
+    voiceStates,
     send,
   };
 }

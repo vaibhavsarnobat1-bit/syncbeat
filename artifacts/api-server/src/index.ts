@@ -3,29 +3,22 @@ import app from "./app.js";
 import { setupWebSocket } from "./lib/websocket.js";
 import { loadRoomsFromDB } from "./lib/rooms.js";
 
-const rawPort = process.env["PORT"];
+// Render or local .env assigns PORT
+const port = Number(process.env["PORT"] || "3001");
+const effectivePort = Number.isNaN(port) || port <= 0 ? 3001 : port;
 
-if (!rawPort) {
-  throw new Error("PORT environment variable is required but was not provided.");
-}
-
-const port = Number(rawPort);
-
-if (Number.isNaN(port) || port <= 0) {
-  throw new Error(`Invalid PORT value: "${rawPort}"`);
-}
+console.log(`[Server] NODE_ENV=${process.env.NODE_ENV || 'development'}, starting on port ${effectivePort}`);
 
 const server = http.createServer(app);
 setupWebSocket(server);
 
-// Load persisted rooms from DB before accepting connections
-loadRoomsFromDB().then(() => {
-  server.listen(port, () => {
-    console.log(`Server listening on port ${port}`);
-  });
-}).catch((err) => {
-  console.error("Failed to load rooms from DB:", err);
-  server.listen(port, () => {
-    console.log(`Server listening on port ${port} (no DB rooms loaded)`);
-  });
+// Start server immediately so API & WebSockets are instantly available
+server.listen(effectivePort, () => {
+  console.log(`[Server] SyncBeat API & WebSocket listening on http://localhost:${effectivePort}`);
 });
+
+// Load persisted rooms from DB in background if available
+loadRoomsFromDB().catch((err) => {
+  console.log("[Server] DB offline or in-memory mode:", err?.message || err);
+});
+

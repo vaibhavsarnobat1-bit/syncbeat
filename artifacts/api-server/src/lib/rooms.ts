@@ -148,9 +148,12 @@ export async function loadRoomsFromDB(): Promise<void> {
       room.messages = await loadMessagesFromDB(room.inviteCode);
       rooms.set(room.inviteCode, room);
     }
-    console.log(`[DB] Loaded ${rows.length} rooms from database`);
-  } catch (err) {
-    console.error("[DB] loadRoomsFromDB error:", err);
+    if (rows.length > 0) {
+      console.log(`[DB] Loaded ${rows.length} rooms from database`);
+    }
+  } catch (err: unknown) {
+    const msg = err instanceof Error ? err.message : String(err);
+    console.warn("[DB] loadRoomsFromDB note:", msg);
   }
 }
 
@@ -266,6 +269,10 @@ export function getAllMessages(): Array<ChatMessage & { roomName: string; invite
 }
 
 export function roomToJSON(room: Room) {
+  let currentTime = room.currentTime;
+  if (room.isPlaying && room.lastSyncAt) {
+    currentTime += (Date.now() - room.lastSyncAt) / 1000;
+  }
   return {
     id: room.id,
     name: room.name,
@@ -276,7 +283,8 @@ export function roomToJSON(room: Room) {
     queue: room.queue,
     history: room.history,
     isPlaying: room.isPlaying,
-    currentTime: room.currentTime,
+    currentTime: Math.max(0, currentTime),
     createdAt: room.createdAt,
   };
 }
+

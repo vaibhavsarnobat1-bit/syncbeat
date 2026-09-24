@@ -1,20 +1,31 @@
-import { useState, useEffect, useRef, useCallback } from 'react';
+import React, { useState, useEffect, useRef, useCallback, useMemo, memo } from 'react';
 import { useRoute, useLocation } from 'wouter';
-import { useGetRoom } from '@workspace/api-client-react';
+import { useGetRoom, type Room, type Track } from '@workspace/api-client-react';
 import { useAuthStore, useRecentRoomsStore } from '@/lib/store';
-import { useWebSocket } from '@/hooks/use-websocket';
-import { YouTubePlayer } from '@/components/player/YouTubePlayer';
+import { useWebSocket, fireOfflineTrackNotification } from '@/hooks/use-websocket';
+import { YouTubePlayer, type PlayerControls } from '@/components/player/YouTubePlayer';
+import { backgroundAudioManager } from '@/lib/backgroundAudioManager';
+import {
+  saveOfflineSongs,
+  getAllOfflineSongs,
+  deleteOfflineSong,
+} from '@/lib/offlineAudioStorage';
 import {
   Users, Send, Search, ArrowLeft, Loader2, Play, X,
   Music2, Link2, MessageCircle, SkipForward, Trash2,
   FolderOpen, Pause, Volume2, TrendingUp, LogOut, Plus,
-  Mic, MicOff, PhoneCall, PhoneOff, Sparkles, Library, Globe,
-  Flame, RefreshCw, Smartphone, Check
+  Sparkles, PhoneCall, Mic, MicOff, PhoneOff, ListMusic,
+  Library, Globe, Flame, RefreshCw, Smartphone, Check,
+  Video, VideoOff, Share2
 } from 'lucide-react';
+import { shareOrCopy, copyToClipboard } from '@/lib/utils';
 import { format } from 'date-fns';
 import { motion, AnimatePresence } from 'framer-motion';
+import { Music3DCanvas } from '@/components/3d/Music3DCanvas';
+import { Reaction3DEmitter, Reaction3DItem } from '@/components/3d/Reaction3DEmitter';
+import { Card3DTilt } from '@/components/3d/Card3DTilt';
 
-const FloatingNotes = ({ isPlaying }: { isPlaying: boolean }) => {
+const FloatingNotes = memo(({ isPlaying }: { isPlaying: boolean }) => {
   if (!isPlaying) return null;
   const notes = ['🎵', '🎶', '🎼', '🎸', '🎹'];
   return (
@@ -43,7 +54,7 @@ const FloatingNotes = ({ isPlaying }: { isPlaying: boolean }) => {
       ))}
     </div>
   );
-};
+});
 
 const REACTION_EMOJIS = ['🔥', '❤️', '😂', '🎵', '💜', '🎉', '👏', '😍'];
 
@@ -93,42 +104,14 @@ const INSTA_FALLBACK: InstaSong[][] = [
 ];
 
 const MUSIC_APPS = [
-  { id: 'spotify', name: 'Spotify', emoji: '🟢', color: '#1DB954', desc: 'Spotify playlists & liked songs', songs: [
-    { title: 'Tum Hi Ho', artist: 'Arijit Singh', videoId: 'Umqb9SGs5K8', thumbnail: 'https://img.youtube.com/vi/Umqb9SGs5K8/hqdefault.jpg', duration: 260000 },
-    { title: 'Kesariya', artist: 'Arijit Singh', videoId: 'jGTQFMOmBEc', thumbnail: 'https://img.youtube.com/vi/jGTQFMOmBEc/hqdefault.jpg', duration: 280000 },
-    { title: 'Shape of You', artist: 'Ed Sheeran', videoId: 'JGwWNGJdvx8', thumbnail: 'https://img.youtube.com/vi/JGwWNGJdvx8/hqdefault.jpg', duration: 240000 },
-    { title: 'Blinding Lights', artist: 'The Weeknd', videoId: '4NRXx6U8ABQ', thumbnail: 'https://img.youtube.com/vi/4NRXx6U8ABQ/hqdefault.jpg', duration: 200000 },
-    { title: 'Galliyan', artist: 'Ankit Tiwari', videoId: 'H5v3kku4y6Q', thumbnail: 'https://img.youtube.com/vi/H5v3kku4y6Q/hqdefault.jpg', duration: 250000 },
-  ]},
-  { id: 'youtube_music', name: 'YouTube Music', emoji: '🔴', color: '#FF0000', desc: 'YouTube Music library', songs: [
-    { title: 'Hymn for the Weekend', artist: 'Coldplay', videoId: 'Yykjpe592L4', thumbnail: 'https://img.youtube.com/vi/Yykjpe592L4/hqdefault.jpg', duration: 260000 },
-    { title: 'Uptown Funk', artist: 'Bruno Mars', videoId: 'OPf0YbXqDm0', thumbnail: 'https://img.youtube.com/vi/OPf0YbXqDm0/hqdefault.jpg', duration: 270000 },
-    { title: 'Lover', artist: 'Diljit Dosanjh', videoId: 'RZYHrygWsNA', thumbnail: 'https://img.youtube.com/vi/RZYHrygWsNA/hqdefault.jpg', duration: 230000 },
-    { title: 'Zingaat', artist: 'Ajay-Atul', videoId: '8w_yL4U10ig', thumbnail: 'https://img.youtube.com/vi/8w_yL4U10ig/hqdefault.jpg', duration: 220000 },
-    { title: 'Hello', artist: 'Adele', videoId: 'YQHsXMglC9A', thumbnail: 'https://img.youtube.com/vi/YQHsXMglC9A/hqdefault.jpg', duration: 295000 },
-  ]},
-  { id: 'gaana', name: 'Gaana', emoji: '🎵', color: '#e8353a', desc: 'Gaana liked songs & playlists', songs: [
-    { title: 'Channa Mereya', artist: 'Arijit Singh', videoId: '284Ov7ysnyo', thumbnail: 'https://img.youtube.com/vi/284Ov7ysnyo/hqdefault.jpg', duration: 290000 },
-    { title: 'Tere Bina', artist: 'AR Rahman', videoId: 'SlPhMPnQ58k', thumbnail: 'https://img.youtube.com/vi/SlPhMPnQ58k/hqdefault.jpg', duration: 240000 },
-    { title: 'Apna Time Aayega', artist: 'Divine', videoId: 'RsEZmictANA', thumbnail: 'https://img.youtube.com/vi/RsEZmictANA/hqdefault.jpg', duration: 200000 },
-    { title: 'Galliyan', artist: 'Ankit Tiwari', videoId: 'H5v3kku4y6Q', thumbnail: 'https://img.youtube.com/vi/H5v3kku4y6Q/hqdefault.jpg', duration: 250000 },
-    { title: 'Ek Dil Ek Jaan', artist: 'Shivam Pathak', videoId: 'V7jHJeX_yPE', thumbnail: 'https://img.youtube.com/vi/V7jHJeX_yPE/hqdefault.jpg', duration: 210000 },
-  ]},
-  { id: 'jiosaavn', name: 'JioSaavn', emoji: '💙', color: '#007bff', desc: 'JioSaavn songs & playlists', songs: [
-    { title: 'Kesariya', artist: 'Arijit Singh', videoId: 'jGTQFMOmBEc', thumbnail: 'https://img.youtube.com/vi/jGTQFMOmBEc/hqdefault.jpg', duration: 280000 },
-    { title: 'Tum Hi Ho', artist: 'Arijit Singh', videoId: 'Umqb9SGs5K8', thumbnail: 'https://img.youtube.com/vi/Umqb9SGs5K8/hqdefault.jpg', duration: 260000 },
-    { title: 'Zingaat', artist: 'Ajay-Atul', videoId: '8w_yL4U10ig', thumbnail: 'https://img.youtube.com/vi/8w_yL4U10ig/hqdefault.jpg', duration: 220000 },
-    { title: 'Happy', artist: 'Pharrell Williams', videoId: 'pRpeEdMmmQ0', thumbnail: 'https://img.youtube.com/vi/pRpeEdMmmQ0/hqdefault.jpg', duration: 233000 },
-    { title: 'Uptown Funk', artist: 'Bruno Mars', videoId: 'OPf0YbXqDm0', thumbnail: 'https://img.youtube.com/vi/OPf0YbXqDm0/hqdefault.jpg', duration: 270000 },
-  ]},
-  { id: 'apple_music', name: 'Apple Music', emoji: '⬛', color: '#FC3C44', desc: 'Apple Music library', songs: [
-    { title: 'Blinding Lights', artist: 'The Weeknd', videoId: '4NRXx6U8ABQ', thumbnail: 'https://img.youtube.com/vi/4NRXx6U8ABQ/hqdefault.jpg', duration: 200000 },
-    { title: 'Hello', artist: 'Adele', videoId: 'YQHsXMglC9A', thumbnail: 'https://img.youtube.com/vi/YQHsXMglC9A/hqdefault.jpg', duration: 295000 },
-    { title: 'Shape of You', artist: 'Ed Sheeran', videoId: 'JGwWNGJdvx8', thumbnail: 'https://img.youtube.com/vi/JGwWNGJdvx8/hqdefault.jpg', duration: 240000 },
-    { title: 'Hymn for the Weekend', artist: 'Coldplay', videoId: 'Yykjpe592L4', thumbnail: 'https://img.youtube.com/vi/Yykjpe592L4/hqdefault.jpg', duration: 260000 },
-    { title: 'Lover', artist: 'Diljit Dosanjh', videoId: 'RZYHrygWsNA', thumbnail: 'https://img.youtube.com/vi/RZYHrygWsNA/hqdefault.jpg', duration: 230000 },
-  ]},
-  { id: 'device', name: 'My Device', emoji: '📱', color: '#00d4d4', desc: 'MP3 files from your phone storage', songs: [] },
+  {
+    id: 'device',
+    name: 'Mera Mobile Device',
+    emoji: '📱',
+    color: '#00d4d4',
+    desc: 'Phone Storage / Files app se audio aur MP3 songs select karein',
+    songs: [] as Array<{ title: string; artist: string; videoId: string; thumbnail: string; duration: number }>,
+  },
 ];
 
 // YouTube Trending fallback (shown when API data not loaded)
@@ -147,7 +130,7 @@ export default function RoomPage() {
   const [, params] = useRoute('/room/:inviteCode');
   const inviteCode = params?.inviteCode;
   const [, setLocation] = useLocation();
-  const { user } = useAuthStore();
+  const { user, setUser } = useAuthStore();
   const { addRoom } = useRecentRoomsStore();
 
   const [query, setQuery] = useState('');
@@ -157,8 +140,23 @@ export default function RoomPage() {
   const [chatInput, setChatInput] = useState('');
   const [copied, setCopied] = useState(false);
   const [showChat, setShowChat] = useState(true); // Mobile overlay toggle
-  const [sidebarTab, setSidebarTab] = useState<'chat' | 'voice' | 'spotify'>('chat');
+  const [sidebarTab, setSidebarTab] = useState<'chat' | 'spotify'>('chat');
   const [trendingSongs, setTrendingSongs] = useState<SearchResult[]>([]);
+  // 3D Reaction state
+  const [active3DReactions, setActive3DReactions] = useState<Reaction3DItem[]>([]);
+
+  const handleSend3DReaction = (emoji: string) => {
+    const newReaction: Reaction3DItem = {
+      id: Math.random().toString(36).substring(2, 9),
+      emoji,
+      xPct: Math.random() * 70 + 15,
+      scale: Math.random() * 0.8 + 0.8,
+      rotation: (Math.random() - 0.5) * 40,
+      duration: Math.random() * 2 + 3,
+    };
+    setActive3DReactions((prev) => [...prev.slice(-15), newReaction]);
+    send({ type: 'reaction', emoji });
+  };
 
   // Instagram Trending — fetched dynamically from API
   const [instaBatches, setInstaBatches] = useState<InstaSong[][]>(INSTA_FALLBACK);
@@ -175,26 +173,52 @@ export default function RoomPage() {
   const [appSongs, setAppSongs] = useState<typeof MUSIC_APPS[0]['songs']>([]);
   const [addedSongs, setAddedSongs] = useState<Set<string>>(new Set());
   
-  // Voice Call Simulation State
+  // Voice & Video Call State
   const [inVoice, setInVoice] = useState(false);
   const [micMuted, setMicMuted] = useState(false);
+  const [videoEnabled, setVideoEnabled] = useState(false);
   const [activeSpeakers, setActiveSpeakers] = useState<string[]>([]);
+  const [micVolume, setMicVolume] = useState<number>(0);
+  const [voiceError, setVoiceError] = useState<string | null>(null);
+
+  const mediaStreamRef = useRef<MediaStream | null>(null);
+  const audioCtxRef = useRef<AudioContext | null>(null);
+  const animFrameRef = useRef<number | null>(null);
 
   // Spotify Playlist Import Simulation State
   const [spotifyUrl, setSpotifyUrl] = useState('');
   const [importStatus, setImportStatus] = useState<'idle' | 'analyzing' | 'matching' | 'queueing' | 'success'>('idle');
   const [importProgress, setImportProgress] = useState(0);
 
-  // Local playlist state
-  const [localFiles, setLocalFiles] = useState<{ name: string; url: string; duration?: number }[]>([]);
+  // Local playlist state (Persisted in IndexedDB for 100% offline playback)
+  const [localFiles, setLocalFiles] = useState<{ id?: string; name: string; url: string; duration?: number }[]>([]);
   const [localPlaying, setLocalPlaying] = useState<number | null>(null);
   const [localAudioEl] = useState(() => (typeof Audio !== 'undefined' ? new Audio() : null));
   const [isLocalPaused, setIsLocalPaused] = useState(false);
   const localFileInputRef = useRef<HTMLInputElement>(null);
+  const playerControlRef = useRef<PlayerControls | null>(null);
 
   const chatScrollRef = useRef<HTMLDivElement>(null);
   const searchRef = useRef<HTMLDivElement>(null);
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const playerGetTimeRef = useRef<(() => number) | null>(null);
+
+  // Automatically load all offline saved songs from IndexedDB on startup ("bina net ke chalega")
+  useEffect(() => {
+    getAllOfflineSongs()
+      .then((saved) => {
+        if (saved && saved.length > 0) {
+          setLocalFiles(
+            saved.map((s) => ({
+              id: s.id,
+              name: s.name,
+              url: s.url || '',
+            }))
+          );
+        }
+      })
+      .catch((err) => console.warn('[OfflineStorage] Error loading offline songs:', err));
+  }, []);
 
   const { data: initialRoom, isLoading, error } = useGetRoom(inviteCode || '', {
     // @ts-ignore
@@ -211,19 +235,82 @@ export default function RoomPage() {
     queue,
     reactions,
     remotePlayerState,
+    voiceStates,
     send,
   } = useWebSocket(inviteCode);
 
-  const activeRoom = room || initialRoom;
+  const fallbackRoom = useMemo<Room>(() => ({
+    id: inviteCode || 'room',
+    name: 'Listening Room',
+    inviteCode: inviteCode || '',
+    hostUserId: user?.userId || '',
+    memberCount: members.length || 1,
+    currentTrack: undefined,
+    isPlaying: false,
+    currentTime: 0,
+  }), [inviteCode, user?.userId, members.length]);
+
+  const activeRoom: Room = (room || initialRoom || fallbackRoom) as Room;
   const isHost = activeRoom?.hostUserId === user?.userId;
 
+  // Broadcast local Voice & Video state (Mic ON/OFF, Cam ON/OFF) to all group members
+  useEffect(() => {
+    if (!isConnected) return;
+    send({
+      type: 'voice_state',
+      inVoice,
+      micMuted,
+      videoEnabled,
+    });
+  }, [inVoice, micMuted, videoEnabled, isConnected, send]);
+
+  const addedRoomRef = useRef<string | null>(null);
   useEffect(() => {
     if (!user) {
-      setLocation(`/login?invite=${inviteCode}`);
+      const guestUser = {
+        userId: 'anon-' + Math.random().toString(36).substring(2, 9),
+        displayName: 'Guest_' + Math.floor(100 + Math.random() * 900),
+        avatarColor: '#00d4d4',
+      };
+      setUser(guestUser);
       return;
     }
-    if (activeRoom) addRoom(activeRoom.inviteCode, activeRoom.name);
-  }, [user, activeRoom, addRoom, inviteCode, setLocation]);
+    if (inviteCode && addedRoomRef.current !== inviteCode) {
+      addedRoomRef.current = inviteCode;
+      addRoom(inviteCode, activeRoom.name || 'Listening Room');
+    }
+  }, [user, setUser, inviteCode, addRoom, activeRoom.name]);
+
+  // Online / Offline tracking & automatic friend YouTube alert
+  const [isOnline, setIsOnline] = useState<boolean>(() =>
+    typeof navigator !== 'undefined' ? navigator.onLine : true
+  );
+
+  useEffect(() => {
+    const handleOnline = () => {
+      setIsOnline(true);
+    };
+
+    const handleOffline = () => {
+      setIsOnline(false);
+      // If a song is in the room and it's a YouTube track, send notification
+      if (activeRoom?.currentTrack) {
+        fireOfflineTrackNotification(
+          'Your friend',
+          activeRoom.currentTrack.title,
+          activeRoom.name
+        );
+      }
+    };
+
+    window.addEventListener('online', handleOnline);
+    window.addEventListener('offline', handleOffline);
+
+    return () => {
+      window.removeEventListener('online', handleOnline);
+      window.removeEventListener('offline', handleOffline);
+    };
+  }, [activeRoom?.currentTrack, activeRoom?.name]);
 
   useEffect(() => {
     if (chatScrollRef.current) chatScrollRef.current.scrollTop = chatScrollRef.current.scrollHeight;
@@ -318,23 +405,139 @@ export default function RoomPage() {
     setAddedSongs((prev) => new Set(prev).add(song.videoId));
   };
 
-  // Voice Chat active speaker visualizer simulation
+  // Real Microphone & Webcam Video Capture Engine
   useEffect(() => {
     if (!inVoice) {
+      if (animFrameRef.current) cancelAnimationFrame(animFrameRef.current);
+      if (mediaStreamRef.current) {
+        mediaStreamRef.current.getTracks().forEach((track) => track.stop());
+        mediaStreamRef.current = null;
+      }
+      if (audioCtxRef.current && audioCtxRef.current.state !== 'closed') {
+        audioCtxRef.current.close().catch(() => {});
+        audioCtxRef.current = null;
+      }
+      setMicVolume(0);
+      setVoiceError(null);
       setActiveSpeakers([]);
       return;
     }
-    const interval = setInterval(() => {
-      if (members.length > 1) {
-        const otherMembers = members.filter((m) => m.userId !== user?.userId);
-        if (otherMembers.length > 0) {
-          const randomMember = otherMembers[Math.floor(Math.random() * otherMembers.length)];
-          setActiveSpeakers((prev) => (prev.includes(randomMember.userId) ? [] : [randomMember.userId]));
+
+    let isSubscribed = true;
+
+    async function initMediaStream() {
+      try {
+        setVoiceError(null);
+        if (!navigator.mediaDevices?.getUserMedia) {
+          throw new Error('Microphone and Camera access are not supported in this browser environment.');
+        }
+
+        // Clean up previous stream tracks if toggling video
+        if (mediaStreamRef.current) {
+          mediaStreamRef.current.getTracks().forEach((t) => t.stop());
+          mediaStreamRef.current = null;
+        }
+
+        const constraints: MediaStreamConstraints = {
+          audio: { echoCancellation: true, noiseSuppression: true, autoGainControl: true },
+          video: videoEnabled ? { width: { ideal: 640 }, height: { ideal: 480 }, facingMode: 'user' } : false,
+        };
+
+        const stream = await navigator.mediaDevices.getUserMedia(constraints);
+
+        if (!isSubscribed) {
+          stream.getTracks().forEach((t) => t.stop());
+          return;
+        }
+
+        mediaStreamRef.current = stream;
+
+        // Apply current mic mute state to tracks
+        stream.getAudioTracks().forEach((t) => {
+          t.enabled = !micMuted;
+        });
+
+        // Setup WebAudio Analyser for Real Mic Level Metering
+        const AudioContextClass = window.AudioContext || (window as any).webkitAudioContext;
+        if (AudioContextClass) {
+          const audioCtx = new AudioContextClass();
+          audioCtxRef.current = audioCtx;
+
+          const source = audioCtx.createMediaStreamSource(stream);
+          const analyser = audioCtx.createAnalyser();
+          analyser.fftSize = 256;
+          source.connect(analyser);
+
+          const dataArray = new Uint8Array(analyser.frequencyBinCount);
+          let lastVolUpdate = 0;
+
+          const checkVolume = () => {
+            if (!isSubscribed || !audioCtxRef.current) return;
+            analyser.getByteFrequencyData(dataArray);
+
+            let sum = 0;
+            for (let i = 0; i < dataArray.length; i++) {
+              sum += dataArray[i];
+            }
+            const average = sum / dataArray.length;
+            const normalizedVol = Math.min(100, Math.round((average / 128) * 100));
+
+            const now = Date.now();
+            if (now - lastVolUpdate > 100) {
+              lastVolUpdate = now;
+              setMicVolume(normalizedVol);
+            }
+
+            // Active speaker detection based on actual microphone audio input
+            const isSpeakingNow = normalizedVol > 10 && !micMuted;
+            if (user?.userId) {
+              setActiveSpeakers((prev) => {
+                if (isSpeakingNow && !prev.includes(user.userId)) {
+                  return [...prev, user.userId];
+                } else if (!isSpeakingNow && prev.includes(user.userId)) {
+                  return prev.filter((id) => id !== user.userId);
+                }
+                return prev;
+              });
+            }
+
+            animFrameRef.current = requestAnimationFrame(checkVolume);
+          };
+
+          checkVolume();
+        }
+      } catch (err: any) {
+        console.error('[Voice/Video] Media access error:', err);
+        if (isSubscribed) {
+          setVoiceError(err.message || 'Microphone/Camera permission was denied or device was not found.');
         }
       }
-    }, 2500);
-    return () => clearInterval(interval);
-  }, [inVoice, members, user?.userId]);
+    }
+
+    initMediaStream();
+
+    return () => {
+      isSubscribed = false;
+      if (animFrameRef.current) cancelAnimationFrame(animFrameRef.current);
+      if (mediaStreamRef.current) {
+        mediaStreamRef.current.getTracks().forEach((track) => track.stop());
+        mediaStreamRef.current = null;
+      }
+      if (audioCtxRef.current && audioCtxRef.current.state !== 'closed') {
+        audioCtxRef.current.close().catch(() => {});
+        audioCtxRef.current = null;
+      }
+    };
+  }, [inVoice, videoEnabled, user?.userId]);
+
+  // Sync mute state with mediaStream tracks
+  useEffect(() => {
+    if (mediaStreamRef.current) {
+      mediaStreamRef.current.getAudioTracks().forEach((t) => {
+        t.enabled = !micMuted;
+      });
+    }
+  }, [micMuted]);
 
   // Local audio cleanup
   useEffect(() => {
@@ -419,40 +622,143 @@ export default function RoomPage() {
   const handleQueueRemove = (videoId: string) => send({ type: 'queue_remove', videoId });
   const handleReaction = (emoji: string) => send({ type: 'reaction', emoji });
 
-  const handleLocalFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
+  const handleTogglePlayback = () => {
+    if (!activeRoom?.currentTrack) return;
+    const curTime = playerGetTimeRef.current ? playerGetTimeRef.current() : (activeRoom.currentTime || 0);
+    if (activeRoom.isPlaying) {
+      // ⚡ INSTANT 0ms PAUSE ON LOCAL DEVICE
+      playerControlRef.current?.pauseVideo();
+      backgroundAudioManager.stopKeepAlive();
+      send({ type: 'pause', currentTime: curTime });
+    } else {
+      // ⚡ INSTANT 0ms PLAY ON LOCAL DEVICE
+      playerControlRef.current?.playVideo();
+      backgroundAudioManager.startKeepAlive();
+      send({ type: 'play', currentTime: curTime });
+    }
+  };
+
+  // Sync background audio keep-alive and lock screen controls with room playback
+  useEffect(() => {
+    if (!activeRoom?.currentTrack) {
+      backgroundAudioManager.stopKeepAlive();
+      return;
+    }
+    if (activeRoom.isPlaying) {
+      backgroundAudioManager.startKeepAlive();
+      backgroundAudioManager.updateMediaSession({
+        title: activeRoom.currentTrack.title,
+        artist: 'SyncBeat Live Sync',
+        artworkUrl: activeRoom.currentTrack.thumbnail,
+        isPlaying: true,
+        onPlay: handleTogglePlayback,
+        onPause: handleTogglePlayback,
+        onNext: handleQueueSkip,
+      });
+    } else {
+      backgroundAudioManager.stopKeepAlive();
+      backgroundAudioManager.updateMediaSession({
+        title: activeRoom.currentTrack.title,
+        artist: 'SyncBeat Live Sync (Paused)',
+        artworkUrl: activeRoom.currentTrack.thumbnail,
+        isPlaying: false,
+        onPlay: handleTogglePlayback,
+        onPause: handleTogglePlayback,
+      });
+    }
+  }, [activeRoom?.isPlaying, activeRoom?.currentTrack?.title, activeRoom?.currentTrack?.videoId]);
+
+  // Continuous Zero-Drift Heartbeat: Host broadcasts real-time timestamp every 2.5s
+  useEffect(() => {
+    if (!isHost || !activeRoom?.isPlaying || !activeRoom?.currentTrack || !isConnected) return;
+
+    const interval = setInterval(() => {
+      const cur = playerGetTimeRef.current?.();
+      if (typeof cur === 'number' && cur > 0) {
+        send({ type: 'sync_tick', currentTime: cur, timestamp: Date.now() });
+      }
+    }, 2500);
+
+    return () => clearInterval(interval);
+  }, [isHost, activeRoom?.isPlaying, activeRoom?.currentTrack, isConnected, send]);
+
+  const handleLocalFileSelect = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const files = Array.from(e.target.files || []);
-    const newFiles = files.map((f) => ({
-      name: f.name.replace(/\.[^.]+$/, ''),
-      url: URL.createObjectURL(f),
-    }));
-    setLocalFiles((prev) => [...prev, ...newFiles]);
+    if (files.length === 0) return;
+    try {
+      // Save permanently into IndexedDB for 100% offline access ("bina net ke")
+      const saved = await saveOfflineSongs(files);
+      const newItems = saved.map((s) => ({
+        id: s.id,
+        name: s.name,
+        url: s.url || '',
+      }));
+      setLocalFiles((prev) => [...prev, ...newItems]);
+    } catch (err) {
+      console.warn('[OfflineStorage] Error saving offline files:', err);
+    }
     e.target.value = '';
   };
 
   const playLocalFile = (idx: number) => {
-    if (!localAudioEl) return;
+    if (!localAudioEl || !localFiles[idx]) return;
+    const file = localFiles[idx];
+
     if (localPlaying === idx && !isLocalPaused) {
       localAudioEl.pause();
       setIsLocalPaused(true);
+      backgroundAudioManager.stopKeepAlive();
+      backgroundAudioManager.updateMediaSession({
+        title: file.name,
+        artist: 'Mera Mobile Device (Offline)',
+        isPlaying: false,
+        onPlay: () => playLocalFile(idx),
+        onPause: () => playLocalFile(idx),
+      });
       return;
     }
     if (localPlaying === idx && isLocalPaused) {
       localAudioEl.play();
       setIsLocalPaused(false);
+      backgroundAudioManager.startKeepAlive();
+      backgroundAudioManager.updateMediaSession({
+        title: file.name,
+        artist: 'Mera Mobile Device (Offline)',
+        isPlaying: true,
+        onPlay: () => playLocalFile(idx),
+        onPause: () => playLocalFile(idx),
+      });
       return;
     }
-    localAudioEl.src = localFiles[idx].url;
+    localAudioEl.src = file.url;
     localAudioEl.play();
     setLocalPlaying(idx);
     setIsLocalPaused(false);
+    backgroundAudioManager.startKeepAlive();
+    backgroundAudioManager.updateMediaSession({
+      title: file.name,
+      artist: 'Mera Mobile Device (Offline)',
+      isPlaying: true,
+      onPlay: () => playLocalFile(idx),
+      onPause: () => playLocalFile(idx),
+    });
   };
 
-  const removeLocalFile = (idx: number) => {
+  const removeLocalFile = async (idx: number) => {
+    const file = localFiles[idx];
     if (localPlaying === idx) {
       localAudioEl?.pause();
       setLocalPlaying(null);
+      backgroundAudioManager.stopKeepAlive();
     }
-    URL.revokeObjectURL(localFiles[idx].url);
+    if (file?.id) {
+      await deleteOfflineSong(file.id);
+    }
+    if (file?.url) {
+      try {
+        URL.revokeObjectURL(file.url);
+      } catch {}
+    }
     setLocalFiles((prev) => prev.filter((_, i) => i !== idx));
   };
 
@@ -475,11 +781,18 @@ export default function RoomPage() {
     }, 300);
   };
 
-  const copyInvite = () => {
+  const copyInvite = async () => {
     const base = window.location.origin + window.location.pathname.replace(/\/room\/.*$/, '');
-    navigator.clipboard.writeText(`${base}/room/${activeRoom?.inviteCode}`);
-    setCopied(true);
-    setTimeout(() => setCopied(false), 2500);
+    const inviteUrl = `${base}/room/${activeRoom?.inviteCode}`;
+    const result = await shareOrCopy({
+      title: `SyncBeat — ${activeRoom?.name || 'Music Room'}`,
+      text: `Join my music room "${activeRoom?.name || 'SyncBeat'}" on SyncBeat and listen together!`,
+      url: inviteUrl,
+    });
+    if (result !== 'failed') {
+      setCopied(true);
+      setTimeout(() => setCopied(false), 2500);
+    }
   };
 
   const handleSpotifyImport = (e: React.FormEvent) => {
@@ -558,53 +871,21 @@ export default function RoomPage() {
     }, 7500);
   };
 
-  // ---- Error / Loading states ----
-  if (isLoading) {
-    return (
-      <div className="min-h-screen bg-[#030c12] flex items-center justify-center">
-        <div className="text-center">
-          <Loader2 className="w-10 h-10 animate-spin text-cyan-400 mx-auto mb-4" />
-          <p className="text-white/40 text-sm">Synchronizing with room session...</p>
-        </div>
-      </div>
-    );
-  }
-
-  if (error || wsError) {
-    return (
-      <div className="min-h-screen bg-[#030c12] flex flex-col items-center justify-center p-4 text-center">
-        <div className="w-20 h-20 rounded-2xl bg-white/5 flex items-center justify-center mb-6 text-4xl border border-white/8">
-          🎧
-        </div>
-        <h2 className="text-2xl font-bold mb-2">Vibe Room Expired</h2>
-        <p className="text-white/40 mb-2 max-w-sm text-sm">
-          The code <span className="font-mono bg-white/5 px-2 py-0.5 rounded text-cyan-400">{inviteCode}</span> is
-          invalid or the host has closed the room.
-        </p>
-        <p className="text-xs text-white/20 mb-8">Active rooms clear automatically when all listeners disconnect.</p>
-        <button
-          onClick={() => setLocation('/lobby')}
-          className="px-6 py-3 rounded-xl bg-cyan-500 text-black font-extrabold text-sm hover:opacity-95 transition-all shadow-lg shadow-cyan-500/25"
-        >
-          Return to Lobby
-        </button>
-      </div>
-    );
-  }
-
-  if (!activeRoom) {
-    return (
-      <div className="min-h-screen bg-[#030c12] flex flex-col items-center justify-center p-4 text-center">
-        <Loader2 className="w-8 h-8 animate-spin text-cyan-400 mx-auto mb-4" />
-        <p className="text-white/40 text-xs">Authenticating connection...</p>
-      </div>
-    );
-  }
+  // ---- Room view ----
 
   return (
-    <div className="w-full h-screen flex flex-col overflow-hidden bg-[#030c12] text-white">
+    <div className="w-full h-screen flex flex-col overflow-hidden bg-[#030c12] text-white relative">
+      {/* 3D Reaction Burst Particle Emitter */}
+      <Reaction3DEmitter
+        reactions={active3DReactions}
+        onRemove={(id) => setActive3DReactions((prev) => prev.filter((r) => r.id !== id))}
+      />
+
+      {/* Music Visualizer Background Canvas */}
+      <Music3DCanvas isPlaying={activeRoom.isPlaying} speed={1.1} />
+
       {/* Glow mesh background */}
-      <div className="absolute inset-0 bg-[#040814] -z-10" />
+      <div className="absolute inset-0 bg-[#040814]/75 -z-10 pointer-events-none" />
       <div
         className="absolute inset-0 bg-[radial-gradient(ellipse_60%_60%_at_50%_-10%,rgba(0,212,212,0.1),transparent_60%)] pointer-events-none"
         aria-hidden="true"
@@ -643,14 +924,16 @@ export default function RoomPage() {
           {/* Share button */}
           <button
             onClick={copyInvite}
-            className={`hidden sm:flex items-center gap-1.5 px-3.5 py-1.8 rounded-lg text-xs font-bold transition-all border ${
+            className={`flex items-center gap-1.5 px-2.5 sm:px-3.5 py-1.5 rounded-lg text-xs font-bold transition-all border ${
               copied
                 ? 'bg-green-500/10 text-green-400 border-green-500/20'
                 : 'bg-cyan-500/10 text-cyan-400 hover:bg-cyan-500/20 border-cyan-500/20'
             }`}
+            title="Share Room Link"
           >
-            <Link2 className="w-3.5 h-3.5" />
-            {copied ? 'Link Copied!' : 'Share Room'}
+            <Share2 className="w-3.5 h-3.5" />
+            <span className="hidden sm:inline">{copied ? 'Link Copied!' : 'Share Room'}</span>
+            <span className="sm:hidden">{copied ? 'Copied!' : 'Share'}</span>
           </button>
 
           {/* Member count */}
@@ -684,6 +967,34 @@ export default function RoomPage() {
           </button>
         </div>
       </header>
+
+      {/* Offline Alert Banner */}
+      {!isOnline && (
+        <div className="bg-amber-500/15 border-b border-amber-500/30 px-4 py-2.5 flex items-center justify-between text-xs text-amber-200 z-30 backdrop-blur-md">
+          <div className="flex items-center gap-2.5">
+            <span className="w-2.5 h-2.5 rounded-full bg-amber-400 animate-ping shrink-0" />
+            <div>
+              <p className="font-bold text-amber-300">
+                ⚠️ You are currently offline!
+              </p>
+              <p className="text-[11px] text-amber-200/80">
+                A friend played a YouTube song in this room. Please turn on your internet connection to sync and listen together!
+              </p>
+            </div>
+          </div>
+          <div className="flex items-center gap-2 shrink-0">
+            <span className="hidden sm:inline-block text-[10px] font-mono bg-amber-500/20 px-2.5 py-1 rounded text-amber-300 border border-amber-500/30">
+              Local device songs still work offline
+            </span>
+            <button
+              onClick={() => window.location.reload()}
+              className="px-2.5 py-1 rounded bg-amber-500/30 hover:bg-amber-500/40 text-amber-100 font-bold text-[11px] transition-colors"
+            >
+              Retry
+            </button>
+          </div>
+        </div>
+      )}
 
       {/* Main Body */}
       <main className="flex-1 flex overflow-hidden relative">
@@ -867,7 +1178,14 @@ export default function RoomPage() {
                       onPlay={(time) => send({ type: 'play', currentTime: time })}
                       onPause={(time) => send({ type: 'pause', currentTime: time })}
                       onSeek={(time) => send({ type: 'seek', currentTime: time })}
+                      onEnded={() => {
+                        if (isHost && queue.length > 0) {
+                          handleQueueSkip();
+                        }
+                      }}
                       onReady={() => {}}
+                      getTimeRef={playerGetTimeRef}
+                      playerControlRef={playerControlRef}
                     />
                     <div className="absolute inset-0 pointer-events-none z-10 mix-blend-screen opacity-50">
                       <FloatingNotes isPlaying={activeRoom.isPlaying} />
@@ -904,16 +1222,17 @@ export default function RoomPage() {
               </div>
             </div>
 
-            {/* Reaction Bar */}
+
+            {/* Reaction Bar with 3D Emitter Trigger */}
             <div className="flex items-center gap-1.5 overflow-x-auto scrollbar-hide pb-0.5">
               <span className="text-[10px] text-white/30 font-bold uppercase tracking-wider shrink-0 mr-1">
-                React:
+                3D Burst React:
               </span>
               {REACTION_EMOJIS.map((e) => (
                 <button
                   key={e}
-                  onClick={() => handleReaction(e)}
-                  className="w-8 h-8 shrink-0 flex items-center justify-center rounded-lg bg-white/5 hover:bg-white/10 border border-white/8 text-base transition-all hover:scale-110"
+                  onClick={() => handleSend3DReaction(e)}
+                  className="w-9 h-9 shrink-0 flex items-center justify-center rounded-xl bg-white/5 hover:bg-cyan-500/20 hover:border-cyan-400/40 border border-white/8 text-lg transition-all hover:scale-125 active:scale-95 shadow-lg"
                 >
                   {e}
                 </button>
@@ -922,8 +1241,24 @@ export default function RoomPage() {
 
             {/* Now playing details */}
             {activeRoom.currentTrack && (
-              <div className="flex items-center gap-3 bg-white/[0.02] border border-white/6 rounded-xl p-3">
-                <img src={activeRoom.currentTrack.thumbnail} alt="" className="w-12 h-9 rounded-lg object-cover shrink-0" />
+              <div className="flex items-center gap-3 bg-white/[0.04] border border-cyan-500/20 rounded-xl p-3 shadow-lg backdrop-blur-sm">
+                <button
+                  type="button"
+                  onClick={handleTogglePlayback}
+                  className={`w-10 h-10 rounded-xl flex items-center justify-center transition-all shrink-0 shadow-md ${
+                    activeRoom.isPlaying
+                      ? 'bg-gradient-to-tr from-cyan-500 to-blue-600 text-white hover:scale-105 active:scale-95 shadow-cyan-500/30'
+                      : 'bg-white/10 text-white hover:bg-cyan-500 hover:text-black active:scale-95'
+                  }`}
+                  title={activeRoom.isPlaying ? 'Pause for all members' : 'Play for all members'}
+                >
+                  {activeRoom.isPlaying ? (
+                    <Pause className="w-4 h-4 fill-current" />
+                  ) : (
+                    <Play className="w-4 h-4 ml-0.5 fill-current" />
+                  )}
+                </button>
+                <img src={activeRoom.currentTrack.thumbnail} alt="" className="w-12 h-9 rounded-lg object-cover shrink-0 border border-white/10" />
                 <div className="flex-1 min-w-0">
                   <p className="font-semibold text-xs truncate text-white/90">{activeRoom.currentTrack.title}</p>
                   <div className="flex items-center gap-1.5 mt-0.5">
@@ -942,7 +1277,9 @@ export default function RoomPage() {
                         />
                       ))}
                     </div>
-                    <p className="text-[10px] text-cyan-400 font-bold">NOW PLAYING</p>
+                    <p className={`text-[10px] font-bold ${activeRoom.isPlaying ? 'text-cyan-400' : 'text-yellow-400'}`}>
+                      {activeRoom.isPlaying ? 'NOW PLAYING' : 'PAUSED'}
+                    </p>
                     {queue.length > 0 && (
                       <span className="text-[10px] text-white/30 font-semibold">
                         · {queue.length} {queue.length === 1 ? 'track' : 'tracks'} queued
@@ -1166,27 +1503,46 @@ export default function RoomPage() {
             {/* ── Music App Song Picker ── */}
             <div className="border border-white/6 rounded-2xl overflow-hidden bg-white/[0.01]">
               <div className="flex items-center justify-between px-3 py-2.5 border-b border-white/6 bg-gradient-to-r from-cyan-500/5 to-transparent">
-                <div className="flex items-center gap-2">
+                <div className="flex flex-wrap items-center gap-2">
                   <Smartphone className="w-3.5 h-3.5 text-cyan-400" />
-                  <h3 className="text-xs font-extrabold text-white/80">My Music Apps</h3>
+                  <h3 className="text-xs font-extrabold text-white/80">📱 Mera Mobile Device</h3>
+                  <span className="text-[9px] bg-emerald-500/15 text-emerald-400 border border-emerald-500/30 px-2 py-0.5 rounded-full font-bold flex items-center gap-1">
+                    <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />
+                    Offline (Bina Net Ke)
+                  </span>
                   {localFiles.length > 0 && (
-                    <span className="text-[9px] bg-cyan-400/20 text-cyan-400 px-1.5 py-0.5 rounded-full font-bold">{localFiles.length} device</span>
+                    <span className="text-[9px] bg-cyan-400/20 text-cyan-400 px-1.5 py-0.5 rounded-full font-bold">{localFiles.length} songs</span>
                   )}
                 </div>
                 <button
                   type="button"
-                  onClick={openAppPicker}
-                  className="flex items-center gap-1 px-2.5 py-1 rounded-lg bg-cyan-500/10 hover:bg-cyan-500/20 text-cyan-400 border border-cyan-400/20 text-[10px] font-bold transition-all"
+                  onClick={() => localFileInputRef.current?.click()}
+                  className="flex items-center gap-1 px-2.5 py-1 rounded-lg bg-cyan-500/10 hover:bg-cyan-500/20 text-cyan-400 border border-cyan-400/20 text-[10px] font-bold transition-all shrink-0"
                 >
-                  + Add Songs
+                  📁 Select Audio Files
                 </button>
-                <input ref={localFileInputRef} type="file" accept="audio/*" multiple className="hidden" onChange={handleLocalFileSelect} />
+                <input
+                  ref={localFileInputRef}
+                  type="file"
+                  accept="audio/*,.mp3,.m4a,.wav,.aac,.ogg,.flac"
+                  multiple
+                  className="hidden"
+                  onChange={handleLocalFileSelect}
+                />
               </div>
 
-              {localFiles.length === 0 && !selectedApp ? (
-                <div onClick={openAppPicker} className="py-6 flex flex-col items-center justify-center gap-2 text-white/20 hover:text-white/30 transition-colors cursor-pointer">
-                  <Smartphone className="w-6 h-6" />
-                  <p className="text-xs font-semibold text-center px-4">Add songs from Spotify, JioSaavn, Gaana, YouTube Music & more</p>
+              {localFiles.length === 0 ? (
+                <div
+                  onClick={() => localFileInputRef.current?.click()}
+                  className="py-6 flex flex-col items-center justify-center gap-2 text-white/20 hover:text-white/40 transition-colors cursor-pointer group"
+                >
+                  <div className="w-12 h-12 rounded-2xl bg-white/5 group-hover:bg-cyan-500/10 group-hover:border-cyan-500/30 border border-white/10 flex items-center justify-center transition-all">
+                    <Smartphone className="w-6 h-6 text-cyan-400" />
+                  </div>
+                  <p className="text-xs font-semibold text-center px-4 text-white/80 group-hover:text-cyan-300 transition-colors">
+                    Apne mobile device / phone storage se audio files select karein
+                  </p>
+                  <span className="text-[10px] text-cyan-400/70 font-medium">Bina internet ke bhi offline chalega • Click to select</span>
                 </div>
               ) : (
                 <div className="divide-y divide-white/5 max-h-[180px] overflow-y-auto scrollbar-hide">
@@ -1199,6 +1555,7 @@ export default function RoomPage() {
                         </button>
                         <div className="flex-grow min-w-0">
                           <p className={`text-xs font-semibold truncate ${localPlaying === idx ? 'text-cyan-400' : 'text-white/80'}`}>{file.name}</p>
+                          <p className="text-[9px] text-emerald-400/80 font-medium">Saved in Device • Offline Ready</p>
                         </div>
                         <button onClick={() => removeLocalFile(idx)} className="p-1 rounded text-white/20 hover:text-red-400 hover:bg-red-500/10 transition-all opacity-0 group-hover:opacity-100">
                           <Trash2 className="w-3 h-3" />
@@ -1233,7 +1590,7 @@ export default function RoomPage() {
                     <div className="flex items-center justify-between px-4 py-3.5 border-b border-white/8">
                       <div>
                         <h3 className="font-extrabold text-sm text-white">📱 Apke Phone ke Music Apps</h3>
-                        <p className="text-[10px] text-white/35 mt-0.5">{selectedApp ? 'Songs dikhao — queue me add karo' : 'Konse app me songs hain? Select karo'}</p>
+                        <p className="text-[10px] text-white/35 mt-0.5">Apne mobile device se songs select karo</p>
                       </div>
                       <button onClick={() => { setShowAppPicker(false); setSelectedApp(null); }} className="p-1.5 rounded-lg bg-white/5 hover:bg-white/10 text-white/40">
                         <X className="w-4 h-4" />
@@ -1241,18 +1598,33 @@ export default function RoomPage() {
                     </div>
 
                     {!selectedApp ? (
-                      /* App Grid */
-                      <div className="p-3 grid grid-cols-2 gap-2">
+                      /* App Grid / Single Device Option */
+                      <div className="p-3 flex flex-col gap-2">
                         {MUSIC_APPS.map((app) => (
                           <button
                             key={app.id}
                             onClick={() => selectMusicApp(app.id)}
-                            className="flex items-center gap-2.5 p-3 rounded-xl border border-white/6 hover:border-white/15 bg-white/[0.02] hover:bg-white/[0.05] transition-all text-left"
+                            className="flex items-center gap-3.5 p-3.5 rounded-xl border border-cyan-500/30 hover:border-cyan-400/60 bg-gradient-to-r from-cyan-500/10 via-white/[0.03] to-transparent hover:from-cyan-500/20 transition-all text-left group"
                           >
-                            <span className="text-xl shrink-0">{app.emoji}</span>
-                            <div className="min-w-0">
-                              <p className="text-xs font-bold text-white/90 truncate">{app.name}</p>
-                              <p className="text-[9px] text-white/35 truncate mt-0.5">{app.desc}</p>
+                            <div className="w-11 h-11 rounded-xl bg-cyan-500/20 border border-cyan-400/30 flex items-center justify-center text-2xl shrink-0 group-hover:scale-110 transition-transform">
+                              {app.emoji}
+                            </div>
+                            <div className="min-w-0 flex-1">
+                              <div className="flex items-center justify-between">
+                                <p className="text-xs font-bold text-white group-hover:text-cyan-300 transition-colors">
+                                  {app.name}
+                                </p>
+                                <span className="text-[9px] px-1.5 py-0.5 rounded bg-cyan-400/20 text-cyan-300 font-semibold">
+                                  Files / Storage
+                                </span>
+                              </div>
+                              <p className="text-[10px] text-white/40 mt-0.5">
+                                {app.desc}
+                              </p>
+                              <p className="text-[10px] text-cyan-400 font-semibold mt-1.5 flex items-center gap-1">
+                                <span>📁 Files app me jao aur song chuno</span>
+                                <span>→</span>
+                              </p>
                             </div>
                           </button>
                         ))}
@@ -1321,12 +1693,18 @@ export default function RoomPage() {
               members={members}
               chatScrollRef={chatScrollRef}
               
-              // Voice Call
+              // Voice & Video Call
               inVoice={inVoice}
               setInVoice={setInVoice}
               micMuted={micMuted}
               setMicMuted={setMicMuted}
+              videoEnabled={videoEnabled}
+              setVideoEnabled={setVideoEnabled}
               activeSpeakers={activeSpeakers}
+              micVolume={micVolume}
+              voiceError={voiceError}
+              mediaStream={mediaStreamRef.current}
+              voiceStates={voiceStates}
               
               // Spotify
               spotifyUrl={spotifyUrl}
@@ -1369,12 +1747,18 @@ export default function RoomPage() {
                     members={members}
                     chatScrollRef={chatScrollRef}
                     
-                    // Voice Call
+                    // Voice & Video Call
                     inVoice={inVoice}
                     setInVoice={setInVoice}
                     micMuted={micMuted}
                     setMicMuted={setMicMuted}
+                    videoEnabled={videoEnabled}
+                    setVideoEnabled={setVideoEnabled}
                     activeSpeakers={activeSpeakers}
+                    micVolume={micVolume}
+                    voiceError={voiceError}
+                    mediaStream={mediaStreamRef.current}
+                    voiceStates={voiceStates}
                     
                     // Spotify
                     spotifyUrl={spotifyUrl}
@@ -1393,8 +1777,36 @@ export default function RoomPage() {
   );
 }
 
+// Local Video Stream Renderer Component
+function LocalVideoTile({ stream }: { stream: MediaStream | null }) {
+  const videoRef = useRef<HTMLVideoElement | null>(null);
+
+  useEffect(() => {
+    if (videoRef.current && stream) {
+      videoRef.current.srcObject = stream;
+    }
+  }, [stream]);
+
+  if (!stream || stream.getVideoTracks().length === 0) return null;
+
+  return (
+    <div className="relative w-full h-36 rounded-xl overflow-hidden border border-cyan-400/40 shadow-lg shadow-cyan-500/10 bg-black">
+      <video
+        ref={videoRef}
+        autoPlay
+        playsInline
+        muted
+        className="w-full h-full object-cover transform -scale-x-100"
+      />
+      <div className="absolute top-2 left-2 px-2 py-0.5 rounded bg-black/60 backdrop-blur-md text-[9px] font-bold text-cyan-400 border border-cyan-400/30 flex items-center gap-1">
+        <Video className="w-3 h-3 text-cyan-400 animate-pulse" /> Live Camera
+      </div>
+    </div>
+  );
+}
+
 // Redesigned Tabbed Social Panel
-function SocialPanel({
+const SocialPanel = memo(function SocialPanel({
   activeTab,
   setActiveTab,
   messages,
@@ -1405,12 +1817,18 @@ function SocialPanel({
   members,
   chatScrollRef,
 
-  // Voice Chat
+  // Voice & Video Chat
   inVoice,
   setInVoice,
   micMuted,
   setMicMuted,
+  videoEnabled,
+  setVideoEnabled,
   activeSpeakers,
+  micVolume,
+  voiceError,
+  mediaStream,
+  voiceStates,
 
   // Spotify
   spotifyUrl,
@@ -1419,8 +1837,8 @@ function SocialPanel({
   importProgress,
   onSpotifyImport,
 }: {
-  activeTab: 'chat' | 'voice' | 'spotify';
-  setActiveTab: (t: 'chat' | 'voice' | 'spotify') => void;
+  activeTab: 'chat' | 'spotify';
+  setActiveTab: (t: 'chat' | 'spotify') => void;
   messages: any[];
   chatInput: string;
   setChatInput: (v: string) => void;
@@ -1429,12 +1847,18 @@ function SocialPanel({
   members: any[];
   chatScrollRef: React.RefObject<HTMLDivElement | null>;
 
-  // Voice Call
+  // Voice & Video Call
   inVoice: boolean;
   setInVoice: (v: boolean) => void;
   micMuted: boolean;
   setMicMuted: (v: boolean) => void;
+  videoEnabled: boolean;
+  setVideoEnabled: (v: boolean) => void;
   activeSpeakers: string[];
+  micVolume: number;
+  voiceError: string | null;
+  mediaStream: MediaStream | null;
+  voiceStates?: Record<string, any>;
 
   // Spotify
   spotifyUrl: string;
@@ -1459,18 +1883,6 @@ function SocialPanel({
           <span>Chat</span>
         </button>
         <button
-          onClick={() => setActiveTab('voice')}
-          className={`flex-1 flex items-center justify-center gap-1.5 py-2.5 rounded-xl text-xs font-bold transition-all border ${
-            activeTab === 'voice'
-              ? 'bg-blue-500/10 text-blue-400 border-blue-500/25 shadow-sm'
-              : 'text-white/40 border-transparent hover:text-white/60'
-          }`}
-        >
-          <Mic className="w-3.5 h-3.5" />
-          <span>Voice</span>
-          {inVoice && <span className="w-1.5 h-1.5 rounded-full bg-green-500 animate-ping" />}
-        </button>
-        <button
           onClick={() => setActiveTab('spotify')}
           className={`flex-1 flex items-center justify-center gap-1.5 py-2.5 rounded-xl text-xs font-bold transition-all border ${
             activeTab === 'spotify'
@@ -1479,7 +1891,7 @@ function SocialPanel({
           }`}
         >
           <Sparkles className="w-3.5 h-3.5" />
-          <span>Spotify</span>
+          <span>Spotify Import</span>
         </button>
       </div>
 
@@ -1624,142 +2036,7 @@ function SocialPanel({
             </motion.div>
           )}
 
-          {/* TAB 2: Voice Chat Panel */}
-          {activeTab === 'voice' && (
-            <motion.div
-              key="voice-tab"
-              initial={{ opacity: 0 }}
-              animate={{ opacity: 1 }}
-              exit={{ opacity: 0 }}
-              className="flex flex-col h-full p-4 justify-between"
-            >
-              {!inVoice ? (
-                <div className="flex-1 flex flex-col items-center justify-center text-center p-4">
-                  <div className="w-16 h-16 rounded-2xl bg-blue-500/10 border border-blue-500/20 flex items-center justify-center mb-4 relative">
-                    <div className="absolute inset-0 border border-blue-500/20 rounded-2xl animate-ping opacity-15" />
-                    <Mic className="w-8 h-8 text-blue-400" />
-                  </div>
-                  <h4 className="text-sm font-bold text-white">Voice Call Channel</h4>
-                  <p className="text-xs text-white/40 mt-1 max-w-[220px] leading-normal">
-                    Connect to speak with other room listeners in real-time.
-                  </p>
-                  <button
-                    onClick={() => setInVoice(true)}
-                    className="mt-6 flex items-center gap-2 px-6 py-3 rounded-xl bg-blue-500 text-white font-bold text-xs hover:opacity-95 transition-all shadow-md shadow-blue-500/10 border border-blue-500/20"
-                  >
-                    <PhoneCall className="w-4 h-4" />
-                    <span>Join Voice Vibe</span>
-                  </button>
-                </div>
-              ) : (
-                <div className="flex-1 flex flex-col justify-between">
-                  <div className="space-y-4">
-                    <div className="flex items-center justify-between bg-green-500/10 border border-green-500/20 p-3 rounded-xl">
-                      <div className="flex items-center gap-2">
-                        <span className="w-2 h-2 rounded-full bg-green-400 animate-pulse" />
-                        <span className="text-xs font-bold text-green-400">Connected to Voice Vibe</span>
-                      </div>
-                      <span className="text-[10px] text-white/30 font-medium font-mono">Simulated</span>
-                    </div>
-
-                    {/* Members in voice */}
-                    <div className="space-y-2">
-                      <p className="text-[10px] text-white/30 uppercase tracking-widest font-bold">
-                        Voice Participants ({members.length})
-                      </p>
-                      <div className="space-y-2">
-                        {members.map((m) => {
-                          const isMe = m.userId === userId;
-                          const isSpeaking = activeSpeakers.includes(m.userId) && (!isMe || !micMuted);
-                          return (
-                            <div
-                              key={m.userId}
-                              className={`flex items-center justify-between p-2.5 rounded-xl bg-white/[0.02] border transition-all ${
-                                isSpeaking ? 'border-green-500/30 bg-green-500/[0.02]' : 'border-white/5'
-                              }`}
-                            >
-                              <div className="flex items-center gap-2.5">
-                                <div className="relative">
-                                  <div
-                                    className={`w-8 h-8 rounded-full flex items-center justify-center text-xs font-bold text-white transition-all ${
-                                      isSpeaking ? 'ring-2 ring-green-400 ring-offset-2 ring-offset-[#090b14]' : ''
-                                    }`}
-                                    style={{ backgroundColor: m.avatarColor }}
-                                  >
-                                    {m.displayName.charAt(0).toUpperCase()}
-                                  </div>
-                                </div>
-                                <div className="text-left">
-                                  <p className="text-xs font-semibold text-white/95">
-                                    {m.displayName} {isMe && '(You)'}
-                                  </p>
-                                  <p className="text-[9px] text-white/35">
-                                    {isMe && micMuted ? 'Muted' : isSpeaking ? 'Speaking...' : 'Listening'}
-                                  </p>
-                                </div>
-                              </div>
-
-                              {/* Speaker Wave Bars */}
-                              {isSpeaking && (
-                                <div className="flex items-end gap-[1.5px] h-3.5 pr-1" aria-hidden="true">
-                                  {[1, 2, 3].map((bar) => (
-                                    <div
-                                      key={bar}
-                                      className="w-[2px] bg-green-400 rounded-full"
-                                      style={{
-                                        animation: `wave ${0.5 + bar * 0.1}s ease-in-out infinite alternate`,
-                                        height: '100%',
-                                        minHeight: '2px',
-                                      }}
-                                    />
-                                  ))}
-                                </div>
-                              )}
-
-                              {isMe && micMuted && <MicOff className="w-3.5 h-3.5 text-red-400" />}
-                            </div>
-                          );
-                        })}
-                      </div>
-                    </div>
-                  </div>
-
-                  {/* Mic mute and Disconnect button controls */}
-                  <div className="space-y-2 pt-4 border-t border-white/6">
-                    <div className="flex gap-2">
-                      <button
-                        onClick={() => setMicMuted(!micMuted)}
-                        className={`flex-1 flex items-center justify-center gap-2 py-3 rounded-xl text-xs font-bold transition-all border ${
-                          micMuted
-                            ? 'bg-red-500/10 text-red-400 border-red-500/25'
-                            : 'bg-white/5 text-white/70 border-white/10 hover:bg-white/10'
-                        }`}
-                      >
-                        {micMuted ? (
-                          <>
-                            <MicOff className="w-4.5 h-4.5" /> Unmute Mic
-                          </>
-                        ) : (
-                          <>
-                            <Mic className="w-4.5 h-4.5" /> Mute Mic
-                          </>
-                        )}
-                      </button>
-                      <button
-                        onClick={() => setInVoice(false)}
-                        className="flex-1 flex items-center justify-center gap-2 py-3 rounded-xl bg-red-500/10 border border-red-500/25 text-red-400 hover:bg-red-500/20 text-xs font-bold transition-all"
-                      >
-                        <PhoneOff className="w-4.5 h-4.5" />
-                        Disconnect
-                      </button>
-                    </div>
-                  </div>
-                </div>
-              )}
-            </motion.div>
-          )}
-
-          {/* TAB 3: Spotify Import Panel */}
+          {/* TAB 2: Spotify Import Panel */}
           {activeTab === 'spotify' && (
             <motion.div
               key="spotify-tab"
@@ -1890,4 +2167,4 @@ function SocialPanel({
       </div>
     </div>
   );
-}
+});

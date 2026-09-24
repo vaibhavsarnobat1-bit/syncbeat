@@ -5,9 +5,28 @@ import { createRoom, getRoomByInviteCode, getRoomByHostUserId, getAllRooms, room
 const router: IRouter = Router();
 
 router.post("/", async (req, res) => {
-  const body = CreateRoomBody.parse(req.body);
-  const room = await createRoom(body.name, body.hostUserId, body.hostDisplayName);
-  res.status(201).json(roomToJSON(room));
+  try {
+    const parsed = CreateRoomBody.safeParse(req.body);
+    let name = "Vibe Room";
+    let hostUserId = `anon-${Math.random().toString(36).substring(2, 9)}`;
+    let hostDisplayName = "Host";
+
+    if (parsed.success) {
+      name = parsed.data.name;
+      hostUserId = parsed.data.hostUserId;
+      hostDisplayName = parsed.data.hostDisplayName;
+    } else if (req.body && typeof req.body.name === "string" && req.body.name.trim()) {
+      name = req.body.name.trim();
+      if (req.body.hostUserId) hostUserId = String(req.body.hostUserId);
+      if (req.body.hostDisplayName) hostDisplayName = String(req.body.hostDisplayName);
+    }
+
+    const room = await createRoom(name, hostUserId, hostDisplayName);
+    res.status(201).json(roomToJSON(room));
+  } catch (err: any) {
+    console.error("[Rooms] createRoom error:", err);
+    res.status(500).json({ error: err?.message || "Failed to create room" });
+  }
 });
 
 router.get("/public", (_req, res) => {
