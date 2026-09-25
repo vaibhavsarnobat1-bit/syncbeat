@@ -101,17 +101,12 @@ export default function Lobby() {
   const [isCreatingRoom, setIsCreatingRoom] = useState(false);
   const [createError, setCreateError] = useState<string | null>(null);
 
-  // Ensure user profile exists or generate guest profile immediately
+  // Auth guard — redirect to login if not authenticated
   useEffect(() => {
     if (!user) {
-      const guestUser = {
-        userId: 'anon-' + Math.random().toString(36).substring(2, 9),
-        displayName: 'Guest_' + Math.floor(100 + Math.random() * 900),
-        avatarColor: '#00d4d4',
-      };
-      setUser(guestUser);
+      setLocation('/login');
     }
-  }, [user, setUser]);
+  }, [user, setLocation]);
 
   const handleCreateRoom = async (e: React.FormEvent) => {
     e.preventDefault();

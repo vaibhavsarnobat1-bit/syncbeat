@@ -19,14 +19,20 @@ export function AppDownloadSection() {
   const [deferredPrompt, setDeferredPrompt] = useState<BeforeInstallPromptEvent | null>(null);
   const [isInstalled, setIsInstalled] = useState(false);
   const [activePlatform, setActivePlatform] = useState<'android' | 'ios' | 'desktop'>('android');
+  const [downloadType, setDownloadType] = useState<'apk' | 'web'>('apk');
 
   useEffect(() => {
-    // Current URL (or fallback)
-    const currentOrigin = typeof window !== 'undefined' ? window.location.origin : 'https://syncbeat.app';
-    setAppUrl(currentOrigin);
+    // Current URL (or LAN IP when local so phone scanning connects over Wi-Fi)
+    const isLocal = typeof window !== 'undefined' && 
+      (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1');
+    const port = typeof window !== 'undefined' && window.location.port ? `:${window.location.port}` : '';
+    const baseOrigin = isLocal ? `http://192.168.1.5${port}` : (typeof window !== 'undefined' ? window.location.origin : 'https://syncbeat.app');
+    
+    const currentUrl = downloadType === 'apk' ? `${baseOrigin}/SyncBeat.apk` : baseOrigin;
+    setAppUrl(currentUrl);
 
     // Generate high-res QR Code
-    QRCode.toDataURL(currentOrigin, {
+    QRCode.toDataURL(currentUrl, {
       width: 320,
       margin: 2,
       color: {
@@ -126,10 +132,30 @@ export function AppDownloadSection() {
                 {/* Corner accent glow */}
                 <div className="absolute -top-12 -right-12 w-28 h-28 bg-cyan-400/20 rounded-full blur-2xl pointer-events-none" />
 
-                {/* Badge */}
-                <div className="flex items-center justify-center gap-1.5 text-xs text-cyan-300 font-semibold mb-4 bg-cyan-950/60 border border-cyan-800/40 py-1.5 px-3 rounded-full mx-auto w-fit">
-                  <QrCode className="w-3.5 h-3.5" />
-                  Scan with Camera to Install
+                {/* Mode Selector */}
+                <div className="grid grid-cols-2 gap-1 p-1 bg-white/5 border border-white/10 rounded-xl mb-4 text-xs font-bold">
+                  <button
+                    onClick={() => setDownloadType('apk')}
+                    className={`py-1.5 px-2 rounded-lg transition-all flex items-center justify-center gap-1.5 ${
+                      downloadType === 'apk'
+                        ? 'bg-gradient-to-r from-cyan-500 to-blue-600 text-white shadow-md'
+                        : 'text-slate-400 hover:text-white'
+                    }`}
+                  >
+                    <Download className="w-3.5 h-3.5" />
+                    <span>Android APK</span>
+                  </button>
+                  <button
+                    onClick={() => setDownloadType('web')}
+                    className={`py-1.5 px-2 rounded-lg transition-all flex items-center justify-center gap-1.5 ${
+                      downloadType === 'web'
+                        ? 'bg-gradient-to-r from-purple-500 to-indigo-600 text-white shadow-md'
+                        : 'text-slate-400 hover:text-white'
+                    }`}
+                  >
+                    <Smartphone className="w-3.5 h-3.5" />
+                    <span>Web App</span>
+                  </button>
                 </div>
 
                 {/* QR Code Container */}
@@ -156,8 +182,20 @@ export function AppDownloadSection() {
                   </div>
                 </div>
 
+                {/* Direct Download APK Button */}
+                {downloadType === 'apk' && (
+                  <a
+                    href="/SyncBeat.apk"
+                    download="SyncBeat.apk"
+                    className="mt-3 flex items-center justify-center gap-2 w-full py-2.5 px-4 rounded-xl bg-gradient-to-r from-cyan-500 to-blue-600 hover:from-cyan-400 hover:to-blue-500 text-white text-xs font-bold shadow-lg shadow-cyan-500/25 transition-all cursor-pointer"
+                  >
+                    <Download className="w-4 h-4" />
+                    <span>Download SyncBeat.apk (677 KB)</span>
+                  </a>
+                )}
+
                 {/* URL preview & Copy */}
-                <div className="mt-5 flex items-center justify-between gap-2 bg-black/40 border border-white/10 rounded-xl px-3 py-2 text-xs">
+                <div className="mt-3 flex items-center justify-between gap-2 bg-black/40 border border-white/10 rounded-xl px-3 py-2 text-xs">
                   <span className="font-mono text-slate-300 truncate max-w-[210px] text-left">
                     {appUrl}
                   </span>
@@ -171,8 +209,10 @@ export function AppDownloadSection() {
                   </button>
                 </div>
 
-                <p className="text-[11px] text-slate-500 mt-3 font-medium">
-                  Scan on your Android or iPhone camera to open & download the app directly.
+                <p className="text-[11px] text-slate-500 mt-2 font-medium">
+                  {downloadType === 'apk'
+                    ? 'Scan QR with phone camera to download SyncBeat.apk instantly'
+                    : 'Scan QR with phone camera to open in Chrome / Safari'}
                 </p>
               </div>
             </div>

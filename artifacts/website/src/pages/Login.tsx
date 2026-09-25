@@ -1,8 +1,8 @@
 import { useState, useEffect, useRef } from 'react';
 import { useLocation, useSearch } from 'wouter';
 import {
-  Headphones, User, ArrowRight, Link2, ChevronRight,
-  Music2, Shield, Sparkles, Radio, Volume2, ArrowLeft,
+  User, ArrowRight, Link2, ChevronRight,
+  Shield, Volume2, ArrowLeft,
   Home as HomeIcon, Trash2, Mail
 } from 'lucide-react';
 import { useLoginAnonymous } from '@workspace/api-client-react';
@@ -44,14 +44,6 @@ function removeSavedAccount(name: string): SavedAccount[] {
   return updated;
 }
 
-function FeatureBadge({ icon: Icon, label }: { icon: any; label: string }) {
-  return (
-    <div className="flex items-center gap-1.5 px-3 py-1 rounded-full bg-cyan-950/30 border border-cyan-500/20 text-cyan-200/70 text-xs font-medium backdrop-blur-md shadow-sm">
-      <Icon className="w-3.5 h-3.5 text-cyan-400" />
-      {label}
-    </div>
-  );
-}
 
 // Reusable Google SVG logo
 function GoogleLogo({ size = 20 }: { size?: number }) {
@@ -126,16 +118,15 @@ export default function Login() {
 
   return (
     <div className="relative w-full min-h-screen flex items-center justify-center p-4 overflow-hidden bg-[#060708] text-white select-none">
-      {/* Background */}
-      <div className="absolute inset-0 z-0 pointer-events-auto overflow-hidden">
+      {/* Background Water Effect */}
+      <div className="fixed inset-0 z-0" style={{ width: '100vw', height: '100vh' }}>
         <ElementsCollection
           variant="water" speed={1.00} size={1.00} particleAmount={1.00}
           hue={0} saturation={1.00} brightness={1.00} opacity={1.00}
-          style={{ width: '100%', height: '100%', pointerEvents: 'auto' }}
+          style={{ width: '100%', height: '100%', display: 'block' }}
         />
       </div>
-      <div className="pointer-events-none absolute inset-0 z-[1] bg-radial from-transparent via-[#060708]/35 to-[#060708]/80" />
-      <div className="pointer-events-none absolute inset-0 z-[1] bg-gradient-to-b from-[#060708]/50 via-transparent to-[#060708]/85" />
+      <div className="pointer-events-none fixed inset-0 z-[1] bg-gradient-to-b from-[#060708]/60 via-[#060708]/20 to-[#060708]/80" />
 
       {/* Top Navbar */}
       <header className="fixed top-0 left-0 right-0 z-40 flex items-center justify-between px-4 sm:px-6 py-4 pointer-events-none">
@@ -163,27 +154,22 @@ export default function Login() {
       </header>
 
       {/* Main Container */}
-      <div className="max-w-md w-full relative z-10 my-8">
-        {/* Hero Header */}
-        <div className="text-center mb-6">
-          <div className="relative mx-auto mb-3.5 w-16 h-16 rounded-2xl overflow-hidden p-[2px] bg-gradient-to-tr from-cyan-500 via-purple-500 to-pink-500 shadow-xl shadow-cyan-500/30 border border-cyan-300/30">
-            <img src="/logo.png" alt="Listening Together Logo" className="w-full h-full object-cover rounded-[14px]" />
+      <div className="max-w-sm w-full relative z-10 my-6">
+        {/* Hero Header - Compact */}
+        <div className="text-center mb-4">
+          <div className="relative mx-auto mb-2.5 w-12 h-12 rounded-xl overflow-hidden p-[2px] bg-gradient-to-tr from-cyan-500 via-purple-500 to-pink-500 shadow-lg shadow-cyan-500/30">
+            <img src="/logo.png" alt="SyncBeat Logo" className="w-full h-full object-cover rounded-[10px]" />
           </div>
-          <h1 className="text-3xl sm:text-4xl font-extrabold tracking-tight">
+          <h1 className="text-2xl font-extrabold tracking-tight">
             <span className="bg-gradient-to-r from-white via-cyan-100 to-cyan-300 bg-clip-text text-transparent">SyncBeat</span>
           </h1>
-          <p className="text-cyan-100/70 text-sm font-medium mt-1.5 px-2">
+          <p className="text-cyan-100/60 text-xs font-medium mt-1">
             {inviteCode ? 'Join the synchronized room 🎧' : 'Synchronized Music with Friends'}
           </p>
-          <div className="flex items-center justify-center gap-2 mt-3 flex-wrap">
-            <FeatureBadge icon={Radio} label="Sub-ms Sync" />
-            <FeatureBadge icon={Music2} label="YouTube & Web" />
-            <FeatureBadge icon={Sparkles} label="Instant Access" />
-          </div>
         </div>
 
-        {/* Glass Card */}
-        <div className="relative rounded-3xl p-6 sm:p-7 overflow-hidden bg-[#070e1b]/85 backdrop-blur-2xl border border-cyan-500/25 shadow-2xl shadow-black/80">
+        {/* Glass Card - Compact */}
+        <div className="relative rounded-2xl p-5 overflow-hidden bg-[#070e1b]/88 backdrop-blur-2xl border border-cyan-500/25 shadow-2xl shadow-black/80">
           {/* Top accent line */}
           <div className="absolute top-0 left-[10%] right-[10%] h-[1px]"
             style={{ background: 'linear-gradient(90deg, transparent, rgba(0,212,212,0.8), rgba(56,189,248,0.8), transparent)' }} />

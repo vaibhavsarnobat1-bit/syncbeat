@@ -10,6 +10,7 @@ import {
 import { CreatorSignature } from '@/components/layout/CreatorSignature';
 import { AppDownloadSection } from '@/components/AppDownloadSection';
 import { AppDownloadModal } from '@/components/AppDownloadModal';
+import { HeroMusicScene3D } from '@/components/3d/HeroMusicScene3D';
 
 const HIGHLIGHT_FEATURES = [
   {
@@ -275,7 +276,7 @@ export default function Home() {
             <button
               onClick={() => {
                 setActiveTab('rooms');
-                setLocation('/lobby');
+                setLocation('/login');
               }}
               className={`relative py-1 transition-colors ${
                 activeTab === 'rooms' ? 'text-white font-semibold' : 'text-slate-400 hover:text-white'
@@ -327,7 +328,7 @@ export default function Home() {
               <span className="hidden md:inline">Install App</span>
             </button>
             <button
-              onClick={() => setLocation('/lobby')}
+              onClick={() => setLocation('/login')}
               className="flex items-center gap-1.5 px-3.5 sm:px-4 py-2 rounded-full text-xs sm:text-sm font-bold text-white bg-gradient-to-r from-cyan-500 to-blue-600 hover:from-cyan-400 hover:to-blue-500 shadow-md shadow-cyan-500/25 hover:scale-[1.02] active:scale-[0.98] transition-all"
             >
               <span>Start Listening</span>
@@ -414,7 +415,7 @@ export default function Home() {
               className="flex flex-col sm:flex-row items-center justify-center gap-4 w-full max-w-xl mx-auto px-4 mb-8"
             >
               <button
-                onClick={() => setLocation('/lobby')}
+                onClick={() => setLocation('/login')}
                 className="w-full sm:w-auto whitespace-nowrap group flex items-center justify-center gap-3 px-8 py-4 rounded-full bg-gradient-to-r from-[#06b6d4] via-[#0284c7] to-[#2563eb] hover:from-[#22d3ee] hover:to-[#3b82f6] text-white font-extrabold text-base sm:text-lg shadow-[0_0_35px_rgba(6,182,212,0.45)] hover:shadow-[0_0_55px_rgba(56,189,248,0.7)] hover:scale-[1.02] active:scale-[0.98] transition-all duration-300"
               >
                 <Headphones className="w-5 h-5 text-white group-hover:scale-110 transition-transform" />
@@ -450,203 +451,168 @@ export default function Home() {
 
           </div>
 
-          {/* Centered Showcase: Friends Listening Visual & Floating Music Player */}
+          {/* 3D Music Animation Scene — Hero Showcase */}
           <div className="max-w-3xl w-full mx-auto relative flex items-center justify-center mt-2 sm:mt-6">
-              
-              {/* Friends Listening Backdrop Scene Card */}
+
+            {/* 3D Stage Card */}
+            <motion.div
+              initial={{ opacity: 0, scale: 0.94 }}
+              animate={{ opacity: 1, scale: 1 }}
+              transition={{ duration: 0.8, delay: 0.2 }}
+              className="relative w-full rounded-3xl overflow-hidden border border-white/[0.12] shadow-2xl shadow-black/80 bg-[#050810]"
+              style={{ aspectRatio: '16/10', minHeight: 320 }}
+            >
+              {/* Real Audio Element for Live Music Preview */}
+              <audio
+                ref={audioRef}
+                src="/audio/chill-lofi-beats.mp3"
+                preload="metadata"
+                onTimeUpdate={handleAudioTimeUpdate}
+                onLoadedMetadata={handleAudioLoadedMetadata}
+                onEnded={handleAudioEnded}
+              />
+
+              {/* 3D Music Animation */}
+              <HeroMusicScene3D
+                isPlaying={isPlaying}
+                onTogglePlay={togglePlayAudio}
+                className="absolute inset-0"
+              />
+
+              {/* Floating Glassmorphic Music Player Card */}
               <motion.div
-                initial={{ opacity: 0, scale: 0.94 }}
-                animate={{ opacity: 1, scale: 1 }}
-                transition={{ duration: 0.8, delay: 0.2 }}
-                className="relative w-full rounded-3xl overflow-hidden border border-white/[0.12] shadow-2xl shadow-black/80 aspect-[16/10] bg-[#070c18]"
+                initial={{ opacity: 0, y: 30 }}
+                animate={{ opacity: 1, y: 0 }}
+                transition={{ duration: 0.7, delay: 0.4 }}
+                className="absolute bottom-4 left-4 right-4 sm:left-8 sm:right-8 sm:bottom-6 bg-[#0b0e1b]/90 backdrop-blur-2xl border border-white/20 rounded-2xl p-4 sm:p-5 shadow-2xl shadow-black/90 z-20"
               >
-                {/* Background Image of friends gazing at night city */}
-                <img
-                  src="/images/friends-listening-hero.jpg"
-                  alt="Friends listening to music together looking at city skyline"
-                  className="w-full h-full object-cover object-center filter brightness-[0.88] contrast-[1.05]"
-                  onError={(e: any) => {
-                    // Fallback to high quality unsplash image if local file still copying
-                    e.currentTarget.src = "https://images.unsplash.com/photo-1514525253161-7a46d19cd819?w=1400&auto=format&fit=crop&q=80";
-                  }}
-                />
+                {/* Track Info Header */}
+                <div className="flex items-center gap-3.5 mb-3">
+                  {/* Album Art */}
+                  <div className="relative w-12 h-12 rounded-xl overflow-hidden shadow-md flex-shrink-0 border border-white/10">
+                    <img
+                      src="/images/lofi-cover.jpg"
+                      alt="Lofi Chill Instrumental"
+                      className={`w-full h-full object-cover transition-transform duration-700 ${isPlaying ? 'scale-105' : 'scale-100'}`}
+                    />
+                    <div className="absolute inset-0 bg-black/20" />
+                  </div>
 
-                {/* Dark Vignette Overlay for focus & readability */}
-                <div className="absolute inset-0 bg-gradient-to-t from-[#05070e] via-black/30 to-black/40 pointer-events-none" />
+                  <div className="flex-1 min-w-0">
+                    <h3 className="text-white font-bold text-sm sm:text-base truncate tracking-tight">
+                      Lofi Chill Instrumental ☕
+                    </h3>
+                    <p className="text-cyan-400/90 text-xs truncate font-medium">
+                      PeryCreep · Chillhop Music
+                    </p>
+                  </div>
 
-                {/* Ambient Neon Floating Glow in Scene */}
-                <div className="absolute top-4 left-6 text-3xl opacity-85 select-none pointer-events-none drop-shadow-[0_0_15px_#38bdf8]">
-                  🎵
+                  {/* Live Sync Status */}
+                  <div className="flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-emerald-500/15 border border-emerald-400/30 text-emerald-400 text-[10px] font-bold">
+                    <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />
+                    {isPlaying ? 'Playing Now' : 'Click Vinyl ↑'}
+                  </div>
                 </div>
-                <div className="absolute top-8 right-6 text-2xl opacity-75 select-none pointer-events-none drop-shadow-[0_0_15px_#c084fc]">
-                  🎶
+
+                {/* Progress Timeline */}
+                <div className="space-y-1 mb-3">
+                  <div
+                    onClick={(e) => {
+                      const rect = e.currentTarget.getBoundingClientRect();
+                      const clickX = e.clientX - rect.left;
+                      const percentage = Math.max(0, Math.min(1, clickX / rect.width));
+                      const newTime = Math.floor(percentage * durationSec);
+                      setCurrentTimeSec(newTime);
+                      if (audioRef.current) audioRef.current.currentTime = newTime;
+                    }}
+                    className="relative w-full h-1.5 bg-white/10 hover:h-2 rounded-full overflow-hidden cursor-pointer transition-all"
+                  >
+                    <motion.div
+                      className="h-full bg-gradient-to-r from-[#8b5cf6] via-[#6366f1] to-[#38bdf8] rounded-full"
+                      style={{ width: `${progressPercent}%` }}
+                    />
+                  </div>
+                  <div className="flex justify-between text-[11px] text-slate-400 font-mono">
+                    <span>{formatTime(currentTimeSec)}</span>
+                    <span>{formatTime(durationSec)}</span>
+                  </div>
                 </div>
 
-                {/* Real Audio Element for Live Music */}
-                <audio
-                  ref={audioRef}
-                  src="/audio/chill-lofi-beats.mp3"
-                  preload="metadata"
-                  onTimeUpdate={handleAudioTimeUpdate}
-                  onLoadedMetadata={handleAudioLoadedMetadata}
-                  onEnded={handleAudioEnded}
-                />
+                {/* Controls Row */}
+                <div className="flex items-center justify-between px-1">
+                  <button
+                    onClick={() => setIsShuffled(!isShuffled)}
+                    className={`p-1.5 rounded-lg transition-colors cursor-pointer ${
+                      isShuffled ? 'text-[#38bdf8] bg-[#38bdf8]/10' : 'text-slate-400 hover:text-white'
+                    }`}
+                    title="Shuffle"
+                  >
+                    <Shuffle className="w-4 h-4" />
+                  </button>
 
-                {/* Floating Glassmorphic Music Player Card */}
-                <motion.div
-                  initial={{ opacity: 0, y: 30 }}
-                  animate={{ opacity: 1, y: 0 }}
-                  transition={{ duration: 0.7, delay: 0.4 }}
-                  className="absolute bottom-4 left-4 right-4 sm:left-8 sm:right-8 sm:bottom-6 bg-[#0b0e1b]/90 backdrop-blur-2xl border border-white/20 rounded-2xl p-4 sm:p-5 shadow-2xl shadow-black/90 z-20"
-                >
-                  {/* Track Info Header */}
-                  <div className="flex items-center gap-3.5 mb-3">
-                    {/* Album Art with Vinyl Vibe */}
-                    <div className="relative w-12 h-12 rounded-xl overflow-hidden shadow-md flex-shrink-0 border border-white/10 group">
-                      <img
-                        src="/images/lofi-cover.jpg"
-                        alt="Lofi Chill Instrumental"
-                        className={`w-full h-full object-cover transition-transform duration-700 ${isPlaying ? 'scale-105' : 'scale-100'}`}
-                      />
-                      <div className="absolute inset-0 bg-black/20" />
-                    </div>
+                  <button
+                    onClick={() => { if (audioRef.current) audioRef.current.currentTime = 0; setCurrentTimeSec(0); }}
+                    className="p-1.5 text-slate-300 hover:text-white transition-colors cursor-pointer active:scale-90"
+                    title="Restart"
+                  >
+                    <SkipBack className="w-5 h-5 fill-current" />
+                  </button>
 
-                    <div className="flex-1 min-w-0">
-                      <h3 className="text-white font-bold text-sm sm:text-base truncate tracking-tight">
-                        Lofi Chill Instrumental ☕
-                      </h3>
-                      <p className="text-cyan-400/90 text-xs truncate font-medium">
-                        PeryCreep · Chillhop Music
-                      </p>
-                    </div>
+                  <button
+                    onClick={togglePlayAudio}
+                    className="w-11 h-11 rounded-full bg-white hover:bg-slate-100 text-black flex items-center justify-center shadow-lg shadow-white/30 hover:scale-105 active:scale-95 transition-all duration-200 cursor-pointer"
+                    title={isPlaying ? 'Pause' : 'Play'}
+                  >
+                    {isPlaying ? (
+                      <Pause className="w-5 h-5 fill-black text-black" />
+                    ) : (
+                      <Play className="w-5 h-5 fill-black text-black translate-x-[1px]" />
+                    )}
+                  </button>
 
-                    {/* Live Sync Status indicator */}
-                    <div className="flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-emerald-500/15 border border-emerald-400/30 text-emerald-400 text-[10px] font-bold">
-                      <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />
-                      {isPlaying ? 'Playing Now' : 'Click to Play'}
-                    </div>
-                  </div>
+                  <button
+                    onClick={() => { if (audioRef.current) audioRef.current.currentTime = 0; setCurrentTimeSec(0); }}
+                    className="p-1.5 text-slate-300 hover:text-white transition-colors cursor-pointer active:scale-90"
+                    title="Next"
+                  >
+                    <SkipForward className="w-5 h-5 fill-current" />
+                  </button>
 
-                  {/* Progress Timeline */}
-                  <div className="space-y-1 mb-3">
-                    <div
-                      onClick={(e) => {
-                        const rect = e.currentTarget.getBoundingClientRect();
-                        const clickX = e.clientX - rect.left;
-                        const percentage = Math.max(0, Math.min(1, clickX / rect.width));
-                        const newTime = Math.floor(percentage * durationSec);
-                        setCurrentTimeSec(newTime);
-                        if (audioRef.current) {
-                          audioRef.current.currentTime = newTime;
-                        }
+                  <button
+                    onClick={() => setIsLiked(!isLiked)}
+                    className={`p-1.5 rounded-lg transition-all cursor-pointer ${
+                      isLiked ? 'text-rose-500 scale-110' : 'text-slate-400 hover:text-rose-400'
+                    }`}
+                    title="Favorite"
+                  >
+                    <Heart className={`w-4 h-4 ${isLiked ? 'fill-rose-500' : ''}`} />
+                  </button>
+                </div>
+
+                {/* Equalizer visualizer */}
+                <div className="mt-3.5 pt-2 flex items-center justify-center gap-[3px] h-6 overflow-hidden">
+                  {[14, 22, 35, 18, 28, 45, 30, 20, 38, 50, 42, 26, 48, 36, 22, 40, 30, 46, 25, 38, 50, 32, 20, 44, 28, 16, 35, 24, 18, 26, 15].map((height, idx) => (
+                    <motion.div
+                      key={idx}
+                      className="w-[3px] rounded-full bg-gradient-to-t from-[#8b5cf6] via-[#6366f1] to-[#38bdf8]"
+                      animate={{
+                        height: isPlaying ? [`${height * 0.3}%`, `${height}%`, `${height * 0.4}%`] : '20%',
+                        opacity: isPlaying ? [0.6, 1, 0.7] : 0.3,
                       }}
-                      className="relative w-full h-1.5 bg-white/10 hover:h-2 rounded-full overflow-hidden cursor-pointer transition-all"
-                    >
-                      <motion.div
-                        className="h-full bg-gradient-to-r from-[#8b5cf6] via-[#6366f1] to-[#38bdf8] rounded-full"
-                        style={{ width: `${progressPercent}%` }}
-                      />
-                    </div>
-                    <div className="flex justify-between text-[11px] text-slate-400 font-mono">
-                      <span>{formatTime(currentTimeSec)}</span>
-                      <span>{formatTime(durationSec)}</span>
-                    </div>
-                  </div>
-
-                  {/* Controls Row */}
-                  <div className="flex items-center justify-between px-1">
-                    
-                    {/* Shuffle button */}
-                    <button
-                      onClick={() => setIsShuffled(!isShuffled)}
-                      className={`p-1.5 rounded-lg transition-colors cursor-pointer ${
-                        isShuffled ? 'text-[#38bdf8] bg-[#38bdf8]/10' : 'text-slate-400 hover:text-white'
-                      }`}
-                      title="Shuffle"
-                    >
-                      <Shuffle className="w-4 h-4" />
-                    </button>
-
-                    {/* Previous button */}
-                    <button
-                      onClick={() => {
-                        if (audioRef.current) audioRef.current.currentTime = 0;
-                        setCurrentTimeSec(0);
+                      transition={{
+                        duration: 0.8 + (idx % 5) * 0.15,
+                        repeat: Infinity,
+                        ease: 'easeInOut',
+                        delay: (idx % 7) * 0.08,
                       }}
-                      className="p-1.5 text-slate-300 hover:text-white transition-colors cursor-pointer active:scale-90"
-                      title="Restart track"
-                    >
-                      <SkipBack className="w-5 h-5 fill-current" />
-                    </button>
-
-                    {/* Main Play/Pause Button */}
-                    <button
-                      onClick={togglePlayAudio}
-                      className="w-11 h-11 rounded-full bg-white hover:bg-slate-100 text-black flex items-center justify-center shadow-lg shadow-white/30 hover:scale-105 active:scale-95 transition-all duration-200 cursor-pointer"
-                      title={isPlaying ? "Pause music" : "Play chill music"}
-                    >
-                      {isPlaying ? (
-                        <Pause className="w-5 h-5 fill-black text-black" />
-                      ) : (
-                        <Play className="w-5 h-5 fill-black text-black translate-x-[1px]" />
-                      )}
-                    </button>
-
-                    {/* Next button */}
-                    <button
-                      onClick={() => {
-                        if (audioRef.current) audioRef.current.currentTime = 0;
-                        setCurrentTimeSec(0);
-                      }}
-                      className="p-1.5 text-slate-300 hover:text-white transition-colors cursor-pointer active:scale-90"
-                      title="Next"
-                    >
-                      <SkipForward className="w-5 h-5 fill-current" />
-                    </button>
-
-                    {/* Like button */}
-                    <button
-                      onClick={() => setIsLiked(!isLiked)}
-                      className={`p-1.5 rounded-lg transition-all cursor-pointer ${
-                        isLiked ? 'text-rose-500 scale-110' : 'text-slate-400 hover:text-rose-400'
-                      }`}
-                      title="Favorite"
-                    >
-                      <Heart className={`w-4 h-4 ${isLiked ? 'fill-rose-500' : ''}`} />
-                    </button>
-
-                  </div>
-
-                  {/* Equalizer Audio Visualizer Waves */}
-                  <div className="mt-3.5 pt-2 flex items-center justify-center gap-[3px] h-6 overflow-hidden">
-                    {[
-                      14, 22, 35, 18, 28, 45, 30, 20, 38, 50, 42, 26, 48, 36, 22, 40,
-                      30, 46, 25, 38, 50, 32, 20, 44, 28, 16, 35, 24, 18, 26, 15
-                    ].map((height, idx) => (
-                      <motion.div
-                        key={idx}
-                        className="w-[3px] rounded-full bg-gradient-to-t from-[#8b5cf6] via-[#6366f1] to-[#38bdf8]"
-                        animate={{
-                          height: isPlaying
-                            ? [`${height * 0.3}%`, `${height}%`, `${height * 0.4}%`]
-                            : '20%',
-                          opacity: isPlaying ? [0.6, 1, 0.7] : 0.3,
-                        }}
-                        transition={{
-                          duration: 0.8 + (idx % 5) * 0.15,
-                          repeat: Infinity,
-                          ease: 'easeInOut',
-                          delay: (idx % 7) * 0.08,
-                        }}
-                      />
-                    ))}
-                  </div>
-
-                </motion.div>
-
+                    />
+                  ))}
+                </div>
               </motion.div>
 
-            </div>
+            </motion.div>
+
+          </div>
 
         </div>
       </main>
