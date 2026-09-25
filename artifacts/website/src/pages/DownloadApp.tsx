@@ -2,8 +2,8 @@ import { useEffect, useState } from 'react';
 import { useLocation } from 'wouter';
 import { motion } from 'framer-motion';
 import {
-  Download, Smartphone, CheckCircle, Apple, Sparkles,
-  ArrowRight, ShieldCheck, RefreshCw, ChevronRight, Zap
+  Smartphone, CheckCircle, Apple, Sparkles,
+  ArrowRight, ShieldCheck, ChevronRight, Zap, Info, MoreVertical
 } from 'lucide-react';
 
 interface BeforeInstallPromptEvent extends Event {
@@ -14,8 +14,8 @@ interface BeforeInstallPromptEvent extends Event {
 export default function DownloadApp() {
   const [, setLocation] = useLocation();
   const [deferredPrompt, setDeferredPrompt] = useState<BeforeInstallPromptEvent | null>(null);
-  const [downloadStarted, setDownloadStarted] = useState(false);
   const [isIOS, setIsIOS] = useState(false);
+  const [installed, setInstalled] = useState(false);
 
   useEffect(() => {
     // Detect iOS
@@ -23,39 +23,30 @@ export default function DownloadApp() {
       (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
     setIsIOS(isAppleDevice);
 
-    // If Android or desktop, automatically trigger APK download
-    if (!isAppleDevice) {
-      const timer = setTimeout(() => {
-        triggerApkDownload();
-      }, 700);
-      return () => clearTimeout(timer);
-    }
-
     const handleBeforeInstall = (e: Event) => {
       e.preventDefault();
       setDeferredPrompt(e as BeforeInstallPromptEvent);
     };
+
     window.addEventListener('beforeinstallprompt', handleBeforeInstall);
+    window.addEventListener('appinstalled', () => setInstalled(true));
 
     return () => {
       window.removeEventListener('beforeinstallprompt', handleBeforeInstall);
     };
   }, []);
 
-  const triggerApkDownload = () => {
-    setDownloadStarted(true);
-    const link = document.createElement('a');
-    link.href = '/SyncBeat.apk';
-    link.download = 'SyncBeat.apk';
-    document.body.appendChild(link);
-    link.click();
-    document.body.removeChild(link);
-  };
-
-  const handlePwaInstall = async () => {
+  const handleInstallClick = async () => {
     if (deferredPrompt) {
       await deferredPrompt.prompt();
+      const choice = await deferredPrompt.userChoice;
+      if (choice.outcome === 'accepted') {
+        setInstalled(true);
+      }
       setDeferredPrompt(null);
+    } else {
+      // Guide user to Chrome menu
+      alert("Phone me install karne ke liye: Upar right side me 3 dots (⋮) dabayein aur 'Install app' ya 'Add to Home screen' par tap karein!");
     }
   };
 
@@ -81,52 +72,66 @@ export default function DownloadApp() {
           </div>
           <h1 className="text-2xl font-black text-white tracking-tight flex items-center gap-2">
             <span>SyncBeat</span>
-            <span className="text-[10px] uppercase font-bold tracking-wider px-2 py-0.5 rounded-full bg-cyan-500/20 text-cyan-300 border border-cyan-500/30">
-              v1.0 APK
+            <span className="text-[10px] uppercase font-bold tracking-wider px-2.5 py-0.5 rounded-full bg-cyan-500/20 text-cyan-300 border border-cyan-500/30">
+              Official Mobile App
             </span>
           </h1>
           <p className="text-slate-400 text-xs mt-1">
-            Real-Time YouTube Music Sync • Listen with Friends
+            Listen to YouTube Music in Real-Time with Friends
           </p>
         </motion.div>
 
-        {/* Download Card */}
+        {/* Main Installation Card */}
         <motion.div
           initial={{ scale: 0.95, opacity: 0 }}
           animate={{ scale: 1, opacity: 1 }}
           transition={{ delay: 0.1 }}
-          className="bg-[#080d1e]/90 border border-cyan-500/25 rounded-3xl p-6 backdrop-blur-2xl shadow-2xl shadow-cyan-500/10 mb-4"
+          className="bg-[#080d1e]/95 border border-cyan-500/25 rounded-3xl p-6 backdrop-blur-2xl shadow-2xl shadow-cyan-500/10 mb-4"
         >
           {!isIOS ? (
-            /* Android / PC Direct Download Card */
+            /* Android / Chrome Official 1-Tap Install */
             <div className="text-center space-y-4">
               <div className="w-14 h-14 rounded-2xl bg-cyan-500/15 border border-cyan-500/30 flex items-center justify-center mx-auto text-cyan-400 shadow-lg shadow-cyan-500/20">
-                <Download className="w-7 h-7 animate-bounce" />
+                <Smartphone className="w-7 h-7" />
               </div>
 
               <div>
                 <h2 className="text-lg font-extrabold text-white">
-                  {downloadStarted ? 'Downloading SyncBeat APK...' : 'Download SyncBeat APK'}
+                  {installed ? 'SyncBeat Installed! 🎉' : 'Install SyncBeat on Phone'}
                 </h2>
                 <p className="text-xs text-slate-400 mt-1">
-                  {downloadStarted 
-                    ? 'Agar download shuru nahi hua, to niche wale button par tap karein:'
-                    : 'Download auto-start ho raha hai...'}
+                  Bina kisi Parse Error ke direct apne phone me 1-Tap me install karein:
                 </p>
               </div>
 
-              {/* Glowing Download Button */}
+              {/* 1-Tap Install Button */}
               <button
-                onClick={triggerApkDownload}
+                onClick={handleInstallClick}
                 className="w-full py-4 px-6 rounded-2xl font-extrabold text-sm text-white bg-gradient-to-r from-cyan-500 via-blue-600 to-indigo-600 hover:from-cyan-400 hover:to-indigo-500 shadow-xl shadow-cyan-500/30 hover:scale-[1.02] active:scale-[0.98] transition-all flex items-center justify-center gap-2.5 cursor-pointer"
               >
-                <Download className="w-5 h-5" />
-                <span>Direct Download APK (677 KB)</span>
+                <Zap className="w-5 h-5 fill-white" />
+                <span>Install App on Phone (1-Tap)</span>
               </button>
+
+              {/* 2-Step Easy Guide */}
+              <div className="bg-white/5 border border-white/10 rounded-2xl p-4 text-left text-xs space-y-2.5 text-slate-300">
+                <p className="font-bold text-cyan-300 flex items-center gap-1.5 text-[11px] uppercase tracking-wider mb-1">
+                  <Info className="w-3.5 h-3.5" />
+                  Agar button se install na ho, toh 2 second me karein:
+                </p>
+                <div className="flex items-center gap-2.5">
+                  <span className="w-5 h-5 rounded-full bg-cyan-500/20 text-cyan-300 flex items-center justify-center font-bold text-[10px] shrink-0">1</span>
+                  <span>Chrome me upar right side <strong>3 dots (<MoreVertical className="w-3 h-3 inline text-cyan-400" />)</strong> dabayein</span>
+                </div>
+                <div className="flex items-center gap-2.5">
+                  <span className="w-5 h-5 rounded-full bg-purple-500/20 text-purple-300 flex items-center justify-center font-bold text-[10px] shrink-0">2</span>
+                  <span><strong>"Install app"</strong> ya <strong>"Add to Home screen"</strong> par tap karein</span>
+                </div>
+              </div>
 
               <div className="flex items-center justify-center gap-2 text-[11px] text-emerald-400 bg-emerald-500/10 border border-emerald-500/20 rounded-xl py-2 px-3">
                 <ShieldCheck className="w-4 h-4 shrink-0" />
-                <span>100% Safe & Verified • Android Compatible</span>
+                <span>Zero Error • Phone ke Home Screen par App Icon Ban Jayega</span>
               </div>
             </div>
           ) : (
@@ -143,54 +148,35 @@ export default function DownloadApp() {
                 </p>
               </div>
 
-              <div className="bg-white/5 border border-white/10 rounded-2xl p-3.5 text-left text-xs space-y-2 text-slate-300">
-                <div className="flex items-center gap-2">
-                  <span className="w-5 h-5 rounded-full bg-cyan-500/20 text-cyan-300 flex items-center justify-center font-bold text-[10px]">1</span>
+              <div className="bg-white/5 border border-white/10 rounded-2xl p-4 text-left text-xs space-y-2.5 text-slate-300">
+                <div className="flex items-center gap-2.5">
+                  <span className="w-5 h-5 rounded-full bg-cyan-500/20 text-cyan-300 flex items-center justify-center font-bold text-[10px] shrink-0">1</span>
                   <span>Safari me niche <strong>Share Button (⬆️)</strong> dabayein</span>
                 </div>
-                <div className="flex items-center gap-2">
-                  <span className="w-5 h-5 rounded-full bg-purple-500/20 text-purple-300 flex items-center justify-center font-bold text-[10px]">2</span>
+                <div className="flex items-center gap-2.5">
+                  <span className="w-5 h-5 rounded-full bg-purple-500/20 text-purple-300 flex items-center justify-center font-bold text-[10px] shrink-0">2</span>
                   <span>Scroll karke <strong>"Add to Home Screen"</strong> par tap karein</span>
                 </div>
-                <div className="flex items-center gap-2">
-                  <span className="w-5 h-5 rounded-full bg-emerald-500/20 text-emerald-300 flex items-center justify-center font-bold text-[10px]">3</span>
+                <div className="flex items-center gap-2.5">
+                  <span className="w-5 h-5 rounded-full bg-emerald-500/20 text-emerald-300 flex items-center justify-center font-bold text-[10px] shrink-0">3</span>
                   <span>Upar <strong>"Add"</strong> dabayein — Done! 🎉</span>
                 </div>
               </div>
-
-              <button
-                onClick={() => setLocation('/')}
-                className="w-full py-3.5 px-6 rounded-2xl font-bold text-sm text-white bg-gradient-to-r from-purple-500 to-indigo-600 hover:from-purple-400 hover:to-indigo-500 shadow-lg shadow-purple-500/25 transition-all flex items-center justify-center gap-2"
-              >
-                <span>Continue to SyncBeat</span>
-                <ArrowRight className="w-4 h-4" />
-              </button>
             </div>
           )}
         </motion.div>
 
-        {/* PWA 1-Tap button if prompt available */}
-        {deferredPrompt && (
-          <button
-            onClick={handlePwaInstall}
-            className="w-full py-3 px-4 rounded-xl text-xs font-bold text-cyan-300 bg-cyan-500/10 hover:bg-cyan-500/20 border border-cyan-500/30 transition-all flex items-center justify-center gap-2 mb-3"
-          >
-            <Zap className="w-3.5 h-3.5" />
-            <span>Ya Browser me Install Karein (PWA)</span>
-          </button>
-        )}
-
-        {/* Browser Open Button */}
+        {/* Continue to Web App Player Button */}
         <button
           onClick={() => setLocation('/')}
-          className="w-full py-3 px-4 rounded-2xl text-xs font-semibold text-slate-400 hover:text-white bg-white/[0.03] hover:bg-white/[0.08] border border-white/[0.06] transition-all flex items-center justify-center gap-1.5"
+          className="w-full py-3.5 px-4 rounded-2xl text-xs font-bold text-white bg-white/10 hover:bg-white/15 border border-white/15 transition-all flex items-center justify-center gap-2 cursor-pointer shadow-lg"
         >
-          <span>Open Web Player Directly</span>
-          <ChevronRight className="w-3.5 h-3.5 text-cyan-400" />
+          <span>Direct Song Player Kholein (Open in Browser)</span>
+          <ChevronRight className="w-4 h-4 text-cyan-400" />
         </button>
 
         <p className="text-center text-[10px] text-slate-500 mt-4">
-          SyncBeat Music • Direct APK & Web App
+          SyncBeat • Verified Web App • No Play Store Needed
         </p>
       </div>
     </div>
