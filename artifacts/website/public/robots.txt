@@ -1,0 +1,6 @@
+User-agent: *
+Allow: /
+Allow: /SyncBeat.apk
+Allow: /lobby
+
+Sitemap: https://syncbeat.onrender.com/sitemap.xml
