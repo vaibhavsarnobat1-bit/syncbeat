@@ -33,7 +33,7 @@ if (process.env.NODE_ENV === "production") {
   console.log(`[Server] Serving frontend static assets from: ${publicPath}`);
   app.use(express.static(publicPath));
 
-  app.get("*", (_req, res) => {
+  app.use((_req, res) => {
     res.sendFile(path.resolve(publicPath, "index.html"));
   });
 }
