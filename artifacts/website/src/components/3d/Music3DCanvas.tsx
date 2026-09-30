@@ -178,8 +178,8 @@ export const Music3DCanvas = React.memo(function Music3DCanvas({
           w === 0
             ? 'rgba(6, 182, 212, 0.4)'
             : w === 1
-            ? 'rgba(168, 85, 247, 0.3)'
-            : 'rgba(0, 245, 212, 0.25)';
+              ? 'rgba(168, 85, 247, 0.3)'
+              : 'rgba(0, 245, 212, 0.25)';
         ctx.lineWidth = 1.5;
         ctx.stroke();
       }
