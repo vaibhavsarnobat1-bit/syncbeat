@@ -6,6 +6,7 @@ import {
   Wifi, WifiOff, Share2, Sparkles, ExternalLink, ArrowRight, ShieldCheck
 } from 'lucide-react';
 import { shareOrCopy } from '@/lib/utils';
+import { BrandMark } from '@/components/BrandMark';
 
 interface BeforeInstallPromptEvent extends Event {
   prompt: () => Promise<void>;
@@ -225,8 +226,8 @@ export function AppDownloadSection() {
             <div className="bg-[#070b16]/90 border border-white/[0.08] rounded-2xl p-6 sm:p-7 relative overflow-hidden backdrop-blur-md">
               <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 pb-6 border-b border-white/[0.06]">
                 <div className="flex items-center gap-3.5">
-                  <div className="w-12 h-12 rounded-2xl overflow-hidden shadow-lg shadow-cyan-500/30 border border-cyan-400/30 shrink-0">
-                    <img src="/logo.png" alt="SyncBeat Logo" className="w-full h-full object-cover" />
+                  <div className="w-12 h-12 rounded-2xl shadow-lg shadow-cyan-500/30 border border-cyan-400/30 shrink-0 bg-[#070d1c]/85 flex items-center justify-center">
+                    <BrandMark size={42} title="SyncBeat Logo" />
                   </div>
                   <div>
                     <h3 className="text-lg font-bold text-white flex items-center gap-2">

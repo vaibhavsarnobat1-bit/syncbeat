@@ -20,6 +20,7 @@ import type {
   AnonymousLoginRequest,
   CreateRoomRequest,
   ErrorResponse,
+  GoogleLoginRequest,
   HealthStatus,
   Room,
   UserSession,
@@ -193,6 +194,92 @@ export const useLoginAnonymous = <
   TContext
 > => {
   return useMutation(getLoginAnonymousMutationOptions(options));
+};
+
+/**
+ * @summary Login with a Google ID token credential
+ */
+export const getLoginGoogleUrl = () => {
+  return `/api/auth/google`;
+};
+
+export const loginGoogle = async (
+  googleLoginRequest: GoogleLoginRequest,
+  options?: RequestInit,
+): Promise<UserSession> => {
+  return customFetch<UserSession>(getLoginGoogleUrl(), {
+    ...options,
+    method: "POST",
+    headers: { "Content-Type": "application/json", ...options?.headers },
+    body: JSON.stringify(googleLoginRequest),
+  });
+};
+
+export const getLoginGoogleMutationOptions = <
+  TError = ErrorType<ErrorResponse>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof loginGoogle>>,
+    TError,
+    { data: BodyType<GoogleLoginRequest> },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationOptions<
+  Awaited<ReturnType<typeof loginGoogle>>,
+  TError,
+  { data: BodyType<GoogleLoginRequest> },
+  TContext
+> => {
+  const mutationKey = ["loginGoogle"];
+  const { mutation: mutationOptions, request: requestOptions } = options
+    ? options.mutation &&
+      "mutationKey" in options.mutation &&
+      options.mutation.mutationKey
+      ? options
+      : { ...options, mutation: { ...options.mutation, mutationKey } }
+    : { mutation: { mutationKey }, request: undefined };
+
+  const mutationFn: MutationFunction<
+    Awaited<ReturnType<typeof loginGoogle>>,
+    { data: BodyType<GoogleLoginRequest> }
+  > = (props) => {
+    const { data } = props ?? {};
+
+    return loginGoogle(data, requestOptions);
+  };
+
+  return { mutationFn, ...mutationOptions };
+};
+
+export type LoginGoogleMutationResult = NonNullable<
+  Awaited<ReturnType<typeof loginGoogle>>
+>;
+export type LoginGoogleMutationBody = BodyType<GoogleLoginRequest>;
+export type LoginGoogleMutationError = ErrorType<ErrorResponse>;
+
+/**
+ * @summary Login with a Google ID token credential
+ */
+export const useLoginGoogle = <
+  TError = ErrorType<ErrorResponse>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof loginGoogle>>,
+    TError,
+    { data: BodyType<GoogleLoginRequest> },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationResult<
+  Awaited<ReturnType<typeof loginGoogle>>,
+  TError,
+  { data: BodyType<GoogleLoginRequest> },
+  TContext
+> => {
+  return useMutation(getLoginGoogleMutationOptions(options));
 };
 
 /**

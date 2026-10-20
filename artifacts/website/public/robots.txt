@@ -3,4 +3,4 @@ Allow: /
 Allow: /SyncBeat.apk
 Allow: /lobby
 
-Sitemap: https://syncbeat.onrender.com/sitemap.xml
+Sitemap: https://syncbeat-vaibhav.onrender.com/sitemap.xml

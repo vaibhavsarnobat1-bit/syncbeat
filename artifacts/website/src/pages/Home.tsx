@@ -11,6 +11,7 @@ import { CreatorSignature } from '@/components/layout/CreatorSignature';
 import { AppDownloadSection } from '@/components/AppDownloadSection';
 import { AppDownloadModal } from '@/components/AppDownloadModal';
 import { HeroMusicScene3D } from '@/components/3d/HeroMusicScene3D';
+import { BrandMark } from '@/components/BrandMark';
 
 const HIGHLIGHT_FEATURES = [
   {
@@ -245,8 +246,8 @@ export default function Home() {
             }}
             className="flex items-center gap-2.5 sm:gap-3 group focus:outline-none"
           >
-            <div className="w-9 h-9 sm:w-10 sm:h-10 rounded-xl overflow-hidden p-[1.5px] bg-gradient-to-tr from-[#06b6d4] via-[#0284c7] to-[#6366f1] shadow-lg shadow-[#06b6d4]/30 group-hover:scale-105 transition-transform duration-300">
-              <img src="/logo.png" alt="SyncBeat Logo" className="w-full h-full object-cover rounded-[10px]" />
+            <div className="w-10 h-10 sm:w-11 sm:h-11 rounded-xl bg-[#070d1c]/85 ring-1 ring-white/10 flex items-center justify-center shadow-lg shadow-[#06b6d4]/30 group-hover:scale-105 transition-transform duration-300">
+              <BrandMark variant="intro" size={38} title="SyncBeat logo" />
             </div>
             <span className="font-extrabold text-xl tracking-tight text-white flex items-center gap-1.5">
               SyncBeat
@@ -1084,8 +1085,8 @@ export default function Home() {
           <div className="flex flex-col sm:flex-row items-center justify-between gap-6 pb-8 border-b border-white/[0.06]">
             {/* Logo */}
             <div className="flex items-center gap-3">
-              <div className="w-10 h-10 rounded-xl overflow-hidden shadow-lg shadow-cyan-500/20 border border-white/10 shrink-0">
-                <img src="/logo.png" alt="Listening Together Logo" className="w-full h-full object-cover" />
+              <div className="w-10 h-10 rounded-xl shadow-lg shadow-cyan-500/20 border border-white/10 shrink-0 bg-[#070d1c]/80 flex items-center justify-center">
+                <BrandMark size={34} title="SyncBeat logo" />
               </div>
               <div>
                 <span className="font-extrabold text-white text-base tracking-tight block">SyncBeat</span>

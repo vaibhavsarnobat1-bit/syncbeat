@@ -1,0 +1,27 @@
+name: Keep SyncBeat awake
+
+# Render's free tier spins the service down after ~15 minutes without traffic,
+# so the next visitor waits for a cold start. This pings the health endpoint
+# often enough that the service stays warm.
+on:
+  schedule:
+    - cron: "*/10 * * * *"
+  workflow_dispatch:
+
+jobs:
+  ping:
+    runs-on: ubuntu-latest
+    timeout-minutes: 2
+    steps:
+      - name: Hit /api/healthz
+        run: |
+          for i in 1 2 3; do
+            code=$(curl -s -o /dev/null -w '%{http_code}' --max-time 30 \
+              https://syncbeat-vaibhav.onrender.com/api/healthz) || code=000
+            echo "attempt $i -> $code"
+            [ "$code" = "200" ] && exit 0
+            sleep 20
+          done
+          # A cold service answers 503/timeout on the first hit; that wake-up is
+          # the point of this job, so a failure here is not worth an email.
+          exit 0

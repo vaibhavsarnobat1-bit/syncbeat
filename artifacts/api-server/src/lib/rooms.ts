@@ -53,6 +53,14 @@ export function generateAvatarColor(): string {
   return AVATAR_COLORS[Math.floor(Math.random() * AVATAR_COLORS.length)];
 }
 
+export function avatarColorFromSeed(seed: string): string {
+  let hash = 0;
+  for (let i = 0; i < seed.length; i++) {
+    hash = (hash * 31 + seed.charCodeAt(i)) >>> 0;
+  }
+  return AVATAR_COLORS[hash % AVATAR_COLORS.length];
+}
+
 // ── DB helpers ──────────────────────────────────────────────────────────────
 
 async function upsertRoomToDB(room: Room): Promise<void> {

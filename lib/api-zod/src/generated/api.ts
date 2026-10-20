@@ -25,6 +25,23 @@ export const LoginAnonymousResponse = zod.object({
   userId: zod.string(),
   displayName: zod.string(),
   avatarColor: zod.string(),
+  email: zod.string().optional(),
+  photoUrl: zod.string().optional(),
+});
+
+/**
+ * @summary Login with a Google ID token credential
+ */
+export const LoginGoogleBody = zod.object({
+  credential: zod.string().describe("Google Identity Services ID token (JWT)"),
+});
+
+export const LoginGoogleResponse = zod.object({
+  userId: zod.string(),
+  displayName: zod.string(),
+  avatarColor: zod.string(),
+  email: zod.string().optional(),
+  photoUrl: zod.string().optional(),
 });
 
 /**

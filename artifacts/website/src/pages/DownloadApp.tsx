@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { useLocation } from 'wouter';
 import { motion } from 'framer-motion';
+import { BrandMark } from '@/components/BrandMark';
 import {
   Smartphone, CheckCircle, Apple, Sparkles,
   ArrowRight, ShieldCheck, ChevronRight, Zap, Info, MoreVertical
@@ -66,8 +67,10 @@ export default function DownloadApp() {
         >
           <div className="relative mb-3">
             <div className="absolute inset-0 rounded-3xl bg-cyan-400/30 blur-2xl animate-pulse scale-110" />
-            <div className="w-20 h-20 rounded-3xl p-[2px] bg-gradient-to-tr from-cyan-400 via-blue-500 to-indigo-600 shadow-2xl shadow-cyan-500/30 relative">
-              <img src="/logo.png" alt="SyncBeat" className="w-full h-full object-cover rounded-[22px]" />
+            <div className="w-20 h-20 rounded-3xl p-[2px] bg-gradient-to-tr from-cyan-400 via-blue-500 to-indigo-600 shadow-2xl shadow-cyan-500/30 relative flex items-center justify-center">
+              <div className="w-full h-full rounded-[22px] bg-[#070d1c] flex items-center justify-center">
+                <BrandMark variant="intro" size={64} title="SyncBeat" />
+              </div>
             </div>
           </div>
           <h1 className="text-2xl font-black text-white tracking-tight flex items-center gap-2">

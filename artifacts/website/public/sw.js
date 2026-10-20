@@ -1,9 +1,12 @@
 // SyncBeat Service Worker — Offline Support
-const CACHE_NAME = 'syncbeat-v1';
+const CACHE_NAME = 'syncbeat-v2';
 const STATIC_ASSETS = [
   '/',
   '/index.html',
   '/logo.png',
+  '/favicon.svg',
+  '/brand-icon-192.png',
+  '/brand-icon-512.png',
   '/manifest.json',
 ];
 

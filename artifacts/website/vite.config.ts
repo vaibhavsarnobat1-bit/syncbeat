@@ -57,6 +57,8 @@ const basePath = process.env.BASE_PATH || "/";
 
 export default defineConfig({
   base: basePath,
+  // Load VITE_* env vars from the shared monorepo .env (home/runner/workspace/.env)
+  envDir: path.resolve(import.meta.dirname, "..", ".."),
   plugins: [
     apkMimePlugin(),
     react(),

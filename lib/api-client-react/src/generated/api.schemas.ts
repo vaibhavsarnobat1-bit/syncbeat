@@ -13,10 +13,17 @@ export interface AnonymousLoginRequest {
   displayName?: string;
 }
 
+export interface GoogleLoginRequest {
+  /** Google Identity Services ID token (JWT) */
+  credential: string;
+}
+
 export interface UserSession {
   userId: string;
   displayName: string;
   avatarColor: string;
+  email?: string;
+  photoUrl?: string;
 }
 
 export interface CreateRoomRequest {

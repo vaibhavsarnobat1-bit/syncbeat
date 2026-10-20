@@ -12,11 +12,11 @@ import {
 } from '@/lib/offlineAudioStorage';
 import {
   Users, Send, Search, ArrowLeft, Loader2, Play, X,
-  Music2, Link2, MessageCircle, SkipForward, Trash2,
+  Music2, MessageCircle, SkipForward, Trash2,
   FolderOpen, Pause, Volume2, TrendingUp, LogOut, Plus,
   Sparkles, PhoneCall, Mic, MicOff, PhoneOff, ListMusic,
   Library, Globe, Flame, RefreshCw, Smartphone, Check,
-  Video, VideoOff, Share2
+  Video, VideoOff
 } from 'lucide-react';
 import { shareOrCopy, copyToClipboard } from '@/lib/utils';
 import { format } from 'date-fns';
@@ -24,6 +24,33 @@ import { motion, AnimatePresence } from 'framer-motion';
 import { Music3DCanvas } from '@/components/3d/Music3DCanvas';
 import { Reaction3DEmitter, Reaction3DItem } from '@/components/3d/Reaction3DEmitter';
 import { Card3DTilt } from '@/components/3d/Card3DTilt';
+import { TrackDeck } from '@/components/room/TrackDeck';
+import { FlapText } from '@/components/room/FlapText';
+import { ShareRoomTile } from '@/components/room/ShareRoomTile';
+
+/** Nebula's home hue — everything else is expressed as a shift away from it. */
+const BASE_HUE = 189;
+
+const MOOD_RULES: { hue: number; words: string[] }[] = [
+  { hue: 38, words: ['hindi', 'bollywood', 'punjabi', 't-series', 'arijit', 'diljit', 'aujla', 'desi', 'apna'] },
+  { hue: 322, words: ['romantic', 'love', 'sad', 'heartbreak', 'acoustic', 'mood'] },
+  { hue: 268, words: ['lofi', 'lo-fi', 'chill', 'slowed', 'reverb', 'study', 'sleep'] },
+  { hue: 6, words: ['rock', 'metal', 'edm', 'remix', 'hardstyle', 'trap', 'anthem', 'party'] },
+  { hue: 152, words: ['devotional', 'bhajan', 'mantra', 'aarti', 'krishna', 'shiva'] },
+];
+
+const MOOD_FALLBACK_HUES = [189, 205, 232, 268, 300, 332, 24, 46];
+
+/** Picks a palette hue for the room from the track title — keywords first, then a stable hash. */
+function moodHueFromTitle(title?: string): number {
+  if (!title) return BASE_HUE;
+  const t = title.toLowerCase();
+  const rule = MOOD_RULES.find((r) => r.words.some((w) => t.includes(w)));
+  if (rule) return rule.hue;
+  let hash = 0;
+  for (let i = 0; i < t.length; i++) hash = (hash * 31 + t.charCodeAt(i)) | 0;
+  return MOOD_FALLBACK_HUES[Math.abs(hash) % MOOD_FALLBACK_HUES.length];
+}
 
 const FloatingNotes = memo(({ isPlaying }: { isPlaying: boolean }) => {
   if (!isPlaying) return null;
@@ -57,6 +84,40 @@ const FloatingNotes = memo(({ isPlaying }: { isPlaying: boolean }) => {
 });
 
 const REACTION_EMOJIS = ['🔥', '❤️', '😂', '🎵', '💜', '🎉', '👏', '😍'];
+
+function VinylDisc({
+  size = 110,
+  className = '',
+  labelColor = '#00d4d4',
+  spinning = false,
+}: {
+  size?: number;
+  className?: string;
+  labelColor?: string;
+  spinning?: boolean;
+}) {
+  return (
+    <div className={`relative shrink-0 ${className}`} style={{ width: size, height: size }} aria-hidden="true">
+      <div className={`absolute inset-0 rounded-full vinyl-grooves ${spinning ? 'animate-spin-slow' : ''}`}>
+        <div className="absolute inset-0 rounded-full vinyl-reflection" />
+      </div>
+      <div
+        className="absolute inset-0 m-auto rounded-full"
+        style={{
+          width: size * 0.34,
+          height: size * 0.34,
+          background: `linear-gradient(135deg, ${labelColor}, #16203a)`,
+          border: '1px solid rgba(255,255,255,0.18)',
+          boxShadow: `0 0 16px ${labelColor}55`,
+        }}
+      />
+      <div
+        className="absolute inset-0 m-auto rounded-full bg-[#030712]"
+        style={{ width: Math.max(4, size * 0.06), height: Math.max(4, size * 0.06) }}
+      />
+    </div>
+  );
+}
 
 type SearchResult = {
   videoId: string;
@@ -233,6 +294,7 @@ export default function RoomPage() {
     members,
     messages,
     queue,
+    history,
     reactions,
     remotePlayerState,
     voiceStates,
@@ -252,6 +314,34 @@ export default function RoomPage() {
 
   const activeRoom: Room = (room || initialRoom || fallbackRoom) as Room;
   const isHost = activeRoom?.hostUserId === user?.userId;
+
+  // Room palette drifts to match whatever is playing
+  const moodHue = useMemo(() => moodHueFromTitle(activeRoom.currentTrack?.title), [activeRoom.currentTrack?.title]);
+  // Chat shows only what humans typed — track events live in the On Deck stack.
+  // Deduped because a reconnect can deliver the same message via room_state and chat.
+  const humanMessages = useMemo(() => {
+    const seen = new Set<string>();
+    return messages.filter((m) => {
+      if (m.isSystem || seen.has(m.id)) return false;
+      seen.add(m.id);
+      return true;
+    });
+  }, [messages]);
+
+  // Badge counts only what arrived while the chat was out of sight
+  const [unreadMsgs, setUnreadMsgs] = useState(0);
+  const seenMsgCountRef = useRef(humanMessages.length);
+  useEffect(() => {
+    const arrived = humanMessages.length - seenMsgCountRef.current;
+    seenMsgCountRef.current = humanMessages.length;
+    if (arrived > 0 && !showChat) {
+      const fromOthers = humanMessages.slice(-arrived).filter((m) => m.userId !== user?.userId).length;
+      if (fromOthers > 0) setUnreadMsgs((u) => u + fromOthers);
+    }
+  }, [humanMessages, showChat, user?.userId]);
+  useEffect(() => {
+    if (showChat) setUnreadMsgs(0);
+  }, [showChat]);
 
   // Broadcast local Voice & Video state (Mic ON/OFF, Cam ON/OFF) to all group members
   useEffect(() => {
@@ -314,7 +404,7 @@ export default function RoomPage() {
 
   useEffect(() => {
     if (chatScrollRef.current) chatScrollRef.current.scrollTop = chatScrollRef.current.scrollHeight;
-  }, [messages, sidebarTab]);
+  }, [humanMessages, sidebarTab]);
 
   // Close search on outside click
   useEffect(() => {
@@ -668,7 +758,7 @@ export default function RoomPage() {
     }
   }, [activeRoom?.isPlaying, activeRoom?.currentTrack?.title, activeRoom?.currentTrack?.videoId]);
 
-  // Continuous Zero-Drift Heartbeat: Host broadcasts real-time timestamp every 2.5s
+  // Continuous Zero-Drift Heartbeat: Host broadcasts real-time timestamp every 1.2s for instant alignment
   useEffect(() => {
     if (!isHost || !activeRoom?.isPlaying || !activeRoom?.currentTrack || !isConnected) return;
 
@@ -677,7 +767,7 @@ export default function RoomPage() {
       if (typeof cur === 'number' && cur > 0) {
         send({ type: 'sync_tick', currentTime: cur, timestamp: Date.now() });
       }
-    }, 2500);
+    }, 1200);
 
     return () => clearInterval(interval);
   }, [isHost, activeRoom?.isPlaying, activeRoom?.currentTrack, isConnected, send]);
@@ -874,15 +964,18 @@ export default function RoomPage() {
   // ---- Room view ----
 
   return (
-    <div className="w-full h-screen flex flex-col overflow-hidden bg-[#030c12] text-white relative">
+    <div
+      className="w-full h-screen flex flex-col overflow-hidden bg-[#030c12] text-white relative"
+      style={{ '--sb-hue': moodHue } as React.CSSProperties}
+    >
       {/* 3D Reaction Burst Particle Emitter */}
       <Reaction3DEmitter
         reactions={active3DReactions}
         onRemove={(id) => setActive3DReactions((prev) => prev.filter((r) => r.id !== id))}
       />
 
-      {/* Music Visualizer Background Canvas */}
-      <Music3DCanvas isPlaying={activeRoom.isPlaying} speed={1.1} />
+      {/* Nebula aurora background canvas */}
+      <Music3DCanvas mode="nebula" isPlaying={activeRoom.isPlaying} speed={1.15} hueShift={moodHue - BASE_HUE} />
 
       {/* Glow mesh background */}
       <div className="absolute inset-0 bg-[#040814]/75 -z-10 pointer-events-none" />
@@ -892,60 +985,99 @@ export default function RoomPage() {
       />
 
       {/* Header */}
-      <header className="h-14 border-b border-white/6 flex items-center justify-between px-4 shrink-0 bg-black/40 backdrop-blur-md z-30">
+      <header className="h-14 border-b border-white/8 flex items-center justify-between px-3 sm:px-4 shrink-0 bg-[#060a16]/80 backdrop-blur-2xl z-30">
         <div className="flex items-center gap-3 min-w-0">
           <button
             onClick={() => setLocation('/lobby')}
-            className="p-2 rounded-lg hover:bg-white/5 transition-colors border border-white/6 shrink-0"
+            className="chip-pop p-2 rounded-xl hover:bg-white/5 border border-white/8 shrink-0"
+            title="Back to Lobby"
           >
             <ArrowLeft className="w-4 h-4" />
           </button>
           <div className="min-w-0">
-            <h1 className="font-extrabold text-sm leading-tight truncate flex items-center gap-2">
+            <h1
+              className="font-extrabold text-sm leading-tight truncate flex items-center gap-2 tracking-tight"
+              style={{ fontFamily: 'var(--app-font-display)' }}
+            >
               {activeRoom.name}
               {isHost && (
-                <span className="text-[9px] uppercase tracking-widest bg-cyan-400/10 text-cyan-400 px-2 py-0.5 rounded-full border border-cyan-400/20 shrink-0 font-bold">
+                <span
+                  className="text-[9px] uppercase tracking-[0.18em] px-2 py-0.5 rounded-full shrink-0 font-bold"
+                  style={{
+                    background: 'linear-gradient(135deg, rgba(0,212,212,0.18), rgba(59,130,246,0.12))',
+                    color: '#67e8f9',
+                    border: '1px solid rgba(0,212,212,0.35)',
+                    boxShadow: '0 0 12px rgba(0,212,212,0.15)',
+                  }}
+                >
                   Host
                 </span>
               )}
             </h1>
             <div className="flex items-center gap-2 text-[10px] text-white/35">
-              <span className={`w-1.5 h-1.5 rounded-full shrink-0 ${isConnected ? 'bg-green-500' : 'bg-yellow-500 animate-pulse'}`} />
+              <span
+                className={`w-1.5 h-1.5 rounded-full shrink-0 ${isConnected ? 'bg-green-400' : 'bg-yellow-500 animate-pulse'}`}
+                style={isConnected ? { boxShadow: '0 0 8px rgba(74,222,128,0.8)' } : undefined}
+              />
               <span>{isConnected ? 'Sync Active' : 'Reconnecting...'}</span>
-              <span>•</span>
-              <button onClick={copyInvite} className="flex items-center gap-1 hover:text-white transition-colors">
-                {copied ? <span className="text-green-400 font-bold">Copied invite!</span> : <><Link2 className="w-3 h-3 text-cyan-400" />{activeRoom.inviteCode}</>}
-              </button>
             </div>
           </div>
         </div>
 
         <div className="flex items-center gap-2 shrink-0">
-          {/* Share button */}
-          <button
-            onClick={copyInvite}
-            className={`flex items-center gap-1.5 px-2.5 sm:px-3.5 py-1.5 rounded-lg text-xs font-bold transition-all border ${
-              copied
-                ? 'bg-green-500/10 text-green-400 border-green-500/20'
-                : 'bg-cyan-500/10 text-cyan-400 hover:bg-cyan-500/20 border-cyan-500/20'
-            }`}
-            title="Share Room Link"
-          >
-            <Share2 className="w-3.5 h-3.5" />
-            <span className="hidden sm:inline">{copied ? 'Link Copied!' : 'Share Room'}</span>
-            <span className="sm:hidden">{copied ? 'Copied!' : 'Share'}</span>
-          </button>
+          {/* Invite tile: code + share + QR in one unit */}
+          <ShareRoomTile
+            roomName={activeRoom.name || 'Music Room'}
+            inviteCode={activeRoom.inviteCode}
+            inviteUrl={`${window.location.origin + window.location.pathname.replace(/\/room\/.*$/, '')}/room/${activeRoom.inviteCode}`}
+            copied={copied}
+            onShare={copyInvite}
+            accentHue={moodHue}
+          />
 
-          {/* Member count */}
-          <div className="flex items-center gap-1.5 bg-white/3 px-3 py-1.8 rounded-lg text-xs font-semibold border border-white/6">
-            <Users className="w-3.5 h-3.5 text-cyan-400" /> {members.length}
+          {/* Who's in — floating avatar stack */}
+          <div
+            className="relative flex items-center gap-2 pl-1.5 pr-2.5 py-1 rounded-2xl border border-white/10 chip-pop"
+            style={{
+              background: 'linear-gradient(150deg, rgba(0,212,212,0.14), rgba(255,255,255,0.03) 55%, rgba(59,130,246,0.12))',
+              boxShadow: '0 8px 22px rgba(0,0,0,0.5), inset 0 1px 0 rgba(255,255,255,0.1)',
+            }}
+            title={`${members.length} listening`}
+          >
+            <div className="flex items-center -space-x-2">
+              {members.slice(0, 3).map((m) => (
+                <span
+                  key={m.userId}
+                  className="w-[21px] h-[21px] rounded-full ring-2 ring-[#060a16] flex items-center justify-center text-[9px] font-black text-white shrink-0"
+                  style={{ backgroundColor: m.avatarColor, boxShadow: '0 0 10px rgba(0,212,212,0.3)' }}
+                >
+                  {m.displayName.charAt(0).toUpperCase()}
+                </span>
+              ))}
+              {members.length > 3 && (
+                <span className="w-[21px] h-[21px] rounded-full ring-2 ring-[#060a16] bg-white/10 flex items-center justify-center text-[8px] font-black text-white/70 shrink-0">
+                  +{members.length - 3}
+                </span>
+              )}
+              {members.length === 0 && <Users className="w-3.5 h-3.5 text-cyan-400" />}
+            </div>
+            <span className="text-[11px] font-black tabular-nums text-white/85">{members.length}</span>
+            <span
+              className="absolute -right-0.5 -top-0.5 w-1.5 h-1.5 rounded-full bg-green-400"
+              style={{ boxShadow: '0 0 8px rgba(74,222,128,0.9)' }}
+            />
           </div>
 
           {/* Close Room — host only */}
           {isHost && (
             <button
               onClick={handleCloseRoom}
-              className="hidden sm:flex items-center gap-1.5 px-3 py-1.8 rounded-lg text-xs font-bold text-red-400 bg-red-500/10 hover:bg-red-500/20 border border-red-500/15 transition-all"
+              className="hidden sm:flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-bold text-red-300 transition-all duration-300 hover:-translate-y-0.5 hover:text-red-200"
+              style={{
+                background: 'linear-gradient(160deg, rgba(239,68,68,0.22), rgba(127,29,29,0.14))',
+                border: '1px solid rgba(248,113,113,0.32)',
+                boxShadow: '0 4px 0 rgba(127,29,29,0.55), 0 8px 20px rgba(239,68,68,0.22), inset 0 1px 0 rgba(255,255,255,0.14)',
+              }}
               title="End session for all users"
             >
               <LogOut className="w-3.5 h-3.5" />
@@ -956,12 +1088,12 @@ export default function RoomPage() {
           {/* Mobile drawer toggle */}
           <button
             onClick={() => setShowChat((v) => !v)}
-            className="lg:hidden relative p-2 rounded-lg bg-white/3 hover:bg-white/5 transition-colors border border-white/6"
+            className="lg:hidden relative p-2 rounded-xl bg-white/[0.04] hover:bg-white/5 transition-colors border border-white/8"
           >
             <MessageCircle className="w-4 h-4" />
-            {messages.length > 0 && (
-              <span className="absolute -top-1 -right-1 w-4 h-4 bg-cyan-400 text-black font-bold rounded-full text-[9px] flex items-center justify-center">
-                {Math.min(messages.length, 9)}
+            {unreadMsgs > 0 && (
+              <span className="absolute -top-1 -right-1 min-w-4 h-4 px-1 bg-cyan-400 text-black font-bold rounded-full text-[9px] flex items-center justify-center animate-pulse-ring">
+                {unreadMsgs > 9 ? '9+' : unreadMsgs}
               </span>
             )}
           </button>
@@ -1000,7 +1132,7 @@ export default function RoomPage() {
       <main className="flex-1 flex overflow-hidden relative">
         {/* Left Sidebar - Player, Search & Suggestions */}
         <div className="flex-1 flex flex-col overflow-y-auto overflow-x-hidden min-h-0 bg-black/10">
-          <div className="p-4 flex flex-col gap-4 max-w-4xl mx-auto w-full">
+          <div className="p-4 sm:p-6 flex flex-col gap-4 max-w-5xl xl:max-w-6xl 2xl:max-w-7xl mx-auto w-full">
             {/* Search Input and suggestions chips */}
             <div ref={searchRef} className="relative z-20">
               <form onSubmit={handleSearchSubmit} className="flex gap-2">
@@ -1012,7 +1144,7 @@ export default function RoomPage() {
                     value={query}
                     onChange={handleQueryChange}
                     onFocus={() => searchResults.length > 0 && setShowResults(true)}
-                    className="w-full pl-10 pr-9 py-3 rounded-xl bg-white/[0.03] border border-white/8 outline-none text-sm focus:border-cyan-400/40 focus:bg-white/[0.05] transition-all"
+                    className="input-glow w-full pl-10 pr-9 py-3 rounded-xl bg-white/[0.03] border border-white/8 outline-none text-sm focus:border-cyan-400/50 transition-all"
                     autoComplete="off"
                   />
                   {query && (
@@ -1032,7 +1164,7 @@ export default function RoomPage() {
                 <button
                   type="submit"
                   disabled={!query.trim() || isSearching}
-                  className="px-5 py-3 rounded-xl bg-cyan-500 hover:opacity-95 text-black font-bold text-xs sm:text-sm transition-all disabled:opacity-40 flex items-center gap-1.5 shadow-md shadow-cyan-500/15"
+                  className="btn-shine chip-pop px-5 py-3 rounded-xl bg-gradient-to-r from-cyan-400 to-blue-500 hover:from-cyan-300 hover:to-blue-400 text-black font-bold text-xs sm:text-sm transition-all disabled:opacity-40 disabled:from-white/10 disabled:to-white/10 disabled:text-white/40 flex items-center gap-1.5 shadow-[0_0_22px_rgba(0,212,212,0.25)]"
                 >
                   {isSearching ? <Loader2 className="w-4 h-4 animate-spin" /> : <Search className="w-4 h-4" />}
                   <span>Search</span>
@@ -1043,7 +1175,7 @@ export default function RoomPage() {
               <div className="flex flex-col gap-2.5 mt-3 px-1">
                 {/* Language Chips */}
                 <div className="flex flex-wrap items-center gap-1.5">
-                  <span className="text-[10px] text-white/30 font-bold uppercase tracking-wider shrink-0 mr-1">
+                  <span className="text-[10px] text-white/30 font-bold uppercase tracking-[0.14em] shrink-0 mr-1">
                     Languages:
                   </span>
                   {SUGGESTED_LANGUAGES.map((lang) => (
@@ -1054,7 +1186,7 @@ export default function RoomPage() {
                         setQuery(lang.query);
                         runSearch(lang.query);
                       }}
-                      className="text-[11px] px-3 py-1 rounded-full border border-white/5 hover:border-cyan-400/30 hover:bg-cyan-500/10 text-white/50 hover:text-cyan-400 font-medium transition-all"
+                      className="chip-pop text-[11px] px-3 py-1 rounded-full border border-white/8 hover:border-cyan-400/50 hover:bg-cyan-500/15 text-white/50 hover:text-cyan-300 font-medium"
                     >
                       {lang.label}
                     </button>
@@ -1063,7 +1195,7 @@ export default function RoomPage() {
 
                 {/* Artist Pills */}
                 <div className="flex flex-wrap items-center gap-1.5">
-                  <span className="text-[10px] text-white/30 font-bold uppercase tracking-wider shrink-0 mr-1">
+                  <span className="text-[10px] text-white/30 font-bold uppercase tracking-[0.14em] shrink-0 mr-1">
                     Popular Singers:
                   </span>
                   {SUGGESTED_SINGERS.map((singer) => (
@@ -1074,7 +1206,7 @@ export default function RoomPage() {
                         setQuery(singer);
                         runSearch(singer);
                       }}
-                      className="text-[11px] px-3 py-1 rounded-full border border-white/5 hover:border-cyan-400/30 hover:bg-cyan-500/10 text-white/50 hover:text-cyan-400 font-medium transition-all"
+                      className="chip-pop text-[11px] px-3 py-1 rounded-full border border-white/8 hover:border-cyan-400/50 hover:bg-cyan-500/15 text-white/50 hover:text-cyan-300 font-medium"
                     >
                       {singer}
                     </button>
@@ -1089,7 +1221,7 @@ export default function RoomPage() {
                     initial={{ opacity: 0, y: -6 }}
                     animate={{ opacity: 1, y: 0 }}
                     exit={{ opacity: 0, y: -6 }}
-                    className="absolute top-full mt-2 left-0 right-0 bg-[#0c0d16] border border-white/10 rounded-2xl shadow-2xl overflow-hidden max-h-[350px] overflow-y-auto z-40"
+                    className="absolute top-full mt-2 left-0 right-0 bg-[#0b0f1c]/95 backdrop-blur-2xl border border-white/12 rounded-2xl shadow-2xl overflow-hidden max-h-[350px] overflow-y-auto z-40"
                   >
                     {isSearching ? (
                       <div className="flex items-center justify-center gap-2 py-8 text-white/30">
@@ -1105,7 +1237,7 @@ export default function RoomPage() {
                       <ul>
                         {searchResults.map((result) => (
                           <li key={result.videoId} className="border-b border-white/5 last:border-0">
-                            <div className="flex items-center gap-3 px-4 py-3 hover:bg-white/5 transition-colors group">
+                            <div className="row-slide flex items-center gap-3 px-4 py-3 hover:bg-white/5 transition-all group">
                               <button
                                 type="button"
                                 onClick={() => handleSelectResult(result, 'play')}
@@ -1114,7 +1246,7 @@ export default function RoomPage() {
                                 <img
                                   src={result.thumbnail}
                                   alt={result.title}
-                                  className="w-14 h-10 object-cover rounded-lg"
+                                  className="w-14 h-10 object-cover rounded-lg border border-white/10"
                                 />
                                 <div className="absolute inset-0 bg-black/60 opacity-0 group-hover:opacity-100 transition-opacity rounded-lg flex items-center justify-center">
                                   <Play className="w-4 h-4 text-white fill-white" />
@@ -1137,7 +1269,7 @@ export default function RoomPage() {
                                 type="button"
                                 onClick={() => handleSelectResult(result, 'queue')}
                                 title="Add to room queue"
-                                className="w-7 h-7 flex items-center justify-center rounded-lg bg-white/5 hover:bg-cyan-500/25 hover:text-cyan-400 text-white/30 transition-all shrink-0 opacity-0 group-hover:opacity-100 border border-white/5"
+                                className="chip-pop w-7 h-7 flex items-center justify-center rounded-lg bg-white/5 hover:bg-cyan-500/25 hover:text-cyan-400 text-white/30 transition-all shrink-0 opacity-0 group-hover:opacity-100 border border-white/8"
                               >
                                 <Plus className="w-3.5 h-3.5" />
                               </button>
@@ -1150,6 +1282,35 @@ export default function RoomPage() {
                 )}
               </AnimatePresence>
             </div>
+
+            {/* Split-flap board — the title physically flips on every track change */}
+            {activeRoom.currentTrack && (
+              <div
+                className="relative rounded-2xl border border-white/8 bg-black/40 backdrop-blur-xl px-3 py-2.5 overflow-hidden"
+                style={{ boxShadow: `inset 0 1px 0 rgba(255,255,255,0.06), 0 12px 30px hsl(${moodHue} 90% 40% / 0.16)` }}
+              >
+                <div
+                  className="absolute inset-0 pointer-events-none"
+                  style={{ background: `radial-gradient(120% 100% at 0% 0%, hsl(${moodHue} 90% 55% / 0.16), transparent 62%)` }}
+                  aria-hidden="true"
+                />
+                <div className="relative flex items-center gap-3 text-[13px]">
+                  <div className="flex items-center gap-1.5 shrink-0">
+                    <span
+                      className="w-1.5 h-1.5 rounded-full animate-pulse"
+                      style={{ background: `hsl(${moodHue} 95% 62%)`, boxShadow: `0 0 8px hsl(${moodHue} 95% 60%)` }}
+                    />
+                    <span
+                      className="text-[9px] font-black uppercase tracking-[0.2em]"
+                      style={{ color: `hsl(${moodHue} 90% 68%)` }}
+                    >
+                      {activeRoom.isPlaying ? 'On Air' : 'Paused'}
+                    </span>
+                  </div>
+                  <FlapText text={activeRoom.currentTrack.title} cells={26} className="flex-1 min-w-0" />
+                </div>
+              </div>
+            )}
 
             {/* Video player wrapper */}
             <div className="relative">
@@ -1164,7 +1325,7 @@ export default function RoomPage() {
                 style={{
                   aspectRatio: '16/9',
                   boxShadow: activeRoom.isPlaying
-                    ? '0 0 40px rgba(59, 130, 246, 0.35), 0 0 80px rgba(6, 182, 212, 0.15)'
+                    ? `0 0 40px hsl(${moodHue} 90% 52% / 0.35), 0 0 80px hsl(${moodHue} 90% 45% / 0.16)`
                     : '0 10px 30px rgba(0,0,0,0.6)',
                 }}
               >
@@ -1186,6 +1347,8 @@ export default function RoomPage() {
                       onReady={() => {}}
                       getTimeRef={playerGetTimeRef}
                       playerControlRef={playerControlRef}
+                      trackTitle={activeRoom.currentTrack.title}
+                      trackThumbnail={activeRoom.currentTrack.thumbnail}
                     />
                     <div className="absolute inset-0 pointer-events-none z-10 mix-blend-screen opacity-50">
                       <FloatingNotes isPlaying={activeRoom.isPlaying} />
@@ -1193,11 +1356,19 @@ export default function RoomPage() {
                   </>
                 ) : (
                   <div className="absolute inset-0 flex flex-col items-center justify-center text-center p-4 bg-gradient-to-br from-white/[0.02] to-transparent">
-                    <div className="w-16 h-16 rounded-2xl bg-white/5 flex items-center justify-center mb-4 border border-white/8 shadow-md relative">
-                      <div className="absolute inset-0 border border-cyan-400/20 rounded-2xl animate-ping opacity-25" />
-                      <Play className="w-6 h-6 ml-0.5 text-cyan-400/80 fill-cyan-400/10" />
+                    <div className="animate-float-3d mb-4" style={{ perspective: '800px' }}>
+                      <div className="relative">
+                        <div className="absolute -inset-2.5 rounded-full border border-cyan-400/25 animate-pulse-ring" />
+                        <div className="absolute -inset-5 rounded-full border border-cyan-400/10 animate-pulse-ring" style={{ animationDelay: '1.2s' }} />
+                        <VinylDisc size={80} labelColor="#00d4d4" spinning />
+                      </div>
                     </div>
-                    <p className="text-sm font-bold tracking-wide text-white/80">Choose a Song to Start Listening</p>
+                    <p
+                      className="text-sm font-bold tracking-wide text-white/80"
+                      style={{ fontFamily: 'var(--app-font-display)' }}
+                    >
+                      Choose a Song to Start Listening
+                    </p>
                     <p className="text-xs text-white/30 mt-1">Select from suggestions or search above</p>
                   </div>
                 )}
@@ -1225,14 +1396,14 @@ export default function RoomPage() {
 
             {/* Reaction Bar with 3D Emitter Trigger */}
             <div className="flex items-center gap-1.5 overflow-x-auto scrollbar-hide pb-0.5">
-              <span className="text-[10px] text-white/30 font-bold uppercase tracking-wider shrink-0 mr-1">
+              <span className="text-[10px] text-white/30 font-bold uppercase tracking-[0.14em] shrink-0 mr-1">
                 3D Burst React:
               </span>
               {REACTION_EMOJIS.map((e) => (
                 <button
                   key={e}
                   onClick={() => handleSend3DReaction(e)}
-                  className="w-9 h-9 shrink-0 flex items-center justify-center rounded-xl bg-white/5 hover:bg-cyan-500/20 hover:border-cyan-400/40 border border-white/8 text-lg transition-all hover:scale-125 active:scale-95 shadow-lg"
+                  className="chip-pop w-9 h-9 shrink-0 flex items-center justify-center rounded-xl bg-white/5 hover:bg-cyan-500/20 hover:border-cyan-400/50 hover:shadow-[0_0_18px_rgba(0,212,212,0.25)] border border-white/8 text-lg active:scale-90"
                 >
                   {e}
                 </button>
@@ -1241,21 +1412,21 @@ export default function RoomPage() {
 
             {/* Now playing details */}
             {activeRoom.currentTrack && (
-              <div className="flex items-center gap-3 bg-white/[0.04] border border-cyan-500/20 rounded-xl p-3 shadow-lg backdrop-blur-sm">
+              <div className="card-gradient-border rounded-2xl flex items-center gap-3 p-3 shadow-lg">
                 <button
                   type="button"
                   onClick={handleTogglePlayback}
-                  className={`w-10 h-10 rounded-xl flex items-center justify-center transition-all shrink-0 shadow-md ${
+                  className={`btn-shine w-11 h-11 rounded-xl flex items-center justify-center transition-all shrink-0 ${
                     activeRoom.isPlaying
-                      ? 'bg-gradient-to-tr from-cyan-500 to-blue-600 text-white hover:scale-105 active:scale-95 shadow-cyan-500/30'
-                      : 'bg-white/10 text-white hover:bg-cyan-500 hover:text-black active:scale-95'
+                      ? 'bg-gradient-to-tr from-cyan-400 to-blue-600 text-white shadow-[0_0_24px_rgba(0,212,212,0.45)]'
+                      : 'bg-white/10 text-white hover:bg-cyan-500 hover:text-black border border-white/10'
                   }`}
                   title={activeRoom.isPlaying ? 'Pause for all members' : 'Play for all members'}
                 >
                   {activeRoom.isPlaying ? (
-                    <Pause className="w-4 h-4 fill-current" />
+                    <Pause className="w-4.5 h-4.5 fill-current" />
                   ) : (
-                    <Play className="w-4 h-4 ml-0.5 fill-current" />
+                    <Play className="w-4.5 h-4.5 ml-0.5 fill-current" />
                   )}
                 </button>
                 <img src={activeRoom.currentTrack.thumbnail} alt="" className="w-12 h-9 rounded-lg object-cover shrink-0 border border-white/10" />
@@ -1273,11 +1444,12 @@ export default function RoomPage() {
                               : 'none',
                             minHeight: '2px',
                             height: activeRoom.isPlaying ? '100%' : '2px',
+                            boxShadow: activeRoom.isPlaying ? '0 0 6px rgba(0,212,212,0.6)' : 'none',
                           }}
                         />
                       ))}
                     </div>
-                    <p className={`text-[10px] font-bold ${activeRoom.isPlaying ? 'text-cyan-400' : 'text-yellow-400'}`}>
+                    <p className={`text-[10px] font-bold tracking-wider ${activeRoom.isPlaying ? 'text-cyan-400' : 'text-yellow-400'}`}>
                       {activeRoom.isPlaying ? 'NOW PLAYING' : 'PAUSED'}
                     </p>
                     {queue.length > 0 && (
@@ -1290,7 +1462,7 @@ export default function RoomPage() {
                 {queue.length > 0 && (
                   <button
                     onClick={handleQueueSkip}
-                    className="flex items-center gap-1 px-3 py-1.5 rounded-lg bg-cyan-500/10 hover:bg-cyan-500/20 text-cyan-400 border border-cyan-400/20 text-[10px] font-bold transition-all shrink-0"
+                    className="chip-pop flex items-center gap-1 px-3 py-1.5 rounded-xl bg-cyan-500/10 hover:bg-cyan-500/20 text-cyan-400 border border-cyan-400/25 text-[10px] font-bold shrink-0"
                     title={`Skip to: ${queue[0]?.title}`}
                   >
                     <SkipForward className="w-3 h-3" />
@@ -1300,29 +1472,46 @@ export default function RoomPage() {
               </div>
             )}
 
+            {/* On Deck stack — mobile shows it inline, desktop keeps it in the sidebar */}
+            <TrackDeck
+              className="lg:hidden"
+              current={activeRoom.currentTrack}
+              history={history}
+              isPlaying={activeRoom.isPlaying}
+              accentHue={moodHue}
+            />
+
             {/* Song Queue list */}
             {queue.length > 0 && (
-              <div className="border border-white/6 rounded-xl overflow-hidden bg-white/[0.01]">
+              <div className="border border-white/8 rounded-2xl overflow-hidden bg-white/[0.01]">
                 <div className="flex items-center gap-2 px-3 py-2 border-b border-white/6 bg-white/[0.02]">
-                  <Library className="w-3.5 h-3.5 text-cyan-400" />
-                  <h3 className="text-xs font-bold text-white/80">Play Queue ({queue.length})</h3>
+                  <div
+                    className="w-6 h-6 rounded-lg flex items-center justify-center shrink-0"
+                    style={{ background: 'rgba(0,212,212,0.1)', border: '1px solid rgba(0,212,212,0.2)' }}
+                  >
+                    <Library className="w-3 h-3 text-cyan-400" />
+                  </div>
+                  <h3 className="text-[10px] font-bold text-white/70 uppercase tracking-[0.16em]">
+                    Play Queue
+                  </h3>
+                  <span className="text-[9px] bg-cyan-400/15 text-cyan-400 px-2 py-0.5 rounded-full font-bold">{queue.length}</span>
                 </div>
                 <div className="divide-y divide-white/5 max-h-[220px] overflow-y-auto scrollbar-hide">
                   {queue.map((qTrack, idx) => (
-                    <div key={qTrack.videoId + '-' + idx} className="flex items-center gap-3 px-3 py-2.5 hover:bg-white/[0.02] group">
-                      <span className="text-[10px] text-white/20 font-mono w-4 text-center">{idx + 1}</span>
-                      <img src={qTrack.thumbnail} alt="" className="w-10 h-7 rounded object-cover shrink-0" />
+                    <div key={qTrack.videoId + '-' + idx} className="row-slide flex items-center gap-3 px-3 py-2.5 hover:bg-white/[0.03] group">
+                      <span className="text-[10px] text-white/25 font-mono w-4 text-center shrink-0">{idx + 1}</span>
+                      <img src={qTrack.thumbnail} alt="" className="w-10 h-7 rounded object-cover shrink-0 border border-white/8" />
                       <div className="flex-grow min-w-0">
-                        <p className="text-xs font-medium truncate text-white/80">{qTrack.title}</p>
+                        <p className="text-xs font-medium truncate text-white/80 group-hover:text-white transition-colors">{qTrack.title}</p>
                       </div>
                       {qTrack.duration > 0 && (
-                        <span className="text-[10px] text-white/20 font-mono shrink-0 mr-1">
+                        <span className="text-[10px] text-white/25 font-mono shrink-0 mr-1">
                           {formatDuration(qTrack.duration)}
                         </span>
                       )}
                       <button
                         onClick={() => handleQueueRemove(qTrack.videoId)}
-                        className="p-1 rounded text-white/20 hover:text-red-400 hover:bg-red-500/10 transition-all opacity-0 group-hover:opacity-100"
+                        className="chip-pop p-1 rounded-lg text-white/20 hover:text-red-400 hover:bg-red-500/10 opacity-0 group-hover:opacity-100"
                         title="Remove track"
                       >
                         <Trash2 className="w-3 h-3" />
@@ -1334,7 +1523,7 @@ export default function RoomPage() {
             )}
 
             {/* ── Trending: YouTube / Instagram tabs ── */}
-            <div className="border border-white/6 rounded-2xl overflow-hidden bg-white/[0.01]">
+            <div className="card-gradient-border rounded-2xl overflow-hidden">
               {/* Header with tab icons */}
               <div className="flex items-center justify-between px-3 py-2.5 border-b border-white/6"
                 style={{
@@ -1349,34 +1538,54 @@ export default function RoomPage() {
                   <button
                     onClick={() => setTrendingTab('youtube')}
                     title="YouTube Trending"
-                    className={`flex items-center gap-1.5 px-2.5 py-1.5 rounded-xl text-[11px] font-extrabold transition-all border ${
-                      trendingTab === 'youtube'
-                        ? 'bg-red-500/15 text-red-400 border-red-500/30 shadow-sm shadow-red-500/10'
-                        : 'text-white/30 border-transparent hover:text-red-400 hover:bg-red-500/8'
+                    className={`relative flex items-center gap-1.5 px-2.5 py-1.5 rounded-xl text-[11px] font-extrabold transition-colors ${
+                      trendingTab === 'youtube' ? 'text-red-400' : 'text-white/30 hover:text-red-400'
                     }`}
                   >
+                    {trendingTab === 'youtube' && (
+                      <motion.div
+                        layoutId="trending-tab-pill"
+                        className="absolute inset-0 rounded-xl"
+                        style={{
+                          background: 'rgba(255,0,0,0.14)',
+                          border: '1px solid rgba(255,0,0,0.32)',
+                          boxShadow: '0 2px 12px rgba(255,0,0,0.18), inset 0 1px 0 rgba(255,255,255,0.06)',
+                        }}
+                        transition={{ type: 'spring', stiffness: 420, damping: 34 }}
+                      />
+                    )}
                     {/* YouTube SVG icon */}
-                    <svg viewBox="0 0 24 24" className="w-3.5 h-3.5 fill-current" xmlns="http://www.w3.org/2000/svg">
+                    <svg viewBox="0 0 24 24" className="relative z-10 w-3.5 h-3.5 fill-current" xmlns="http://www.w3.org/2000/svg">
                       <path d="M23.498 6.186a3.016 3.016 0 0 0-2.122-2.136C19.505 3.545 12 3.545 12 3.545s-7.505 0-9.377.505A3.017 3.017 0 0 0 .502 6.186C0 8.07 0 12 0 12s0 3.93.502 5.814a3.016 3.016 0 0 0 2.122 2.136c1.871.505 9.376.505 9.376.505s7.505 0 9.377-.505a3.015 3.015 0 0 0 2.122-2.136C24 15.93 24 12 24 12s0-3.93-.502-5.814zM9.545 15.568V8.432L15.818 12l-6.273 3.568z"/>
                     </svg>
-                    YouTube
+                    <span className="relative z-10">YouTube</span>
                   </button>
 
                   {/* Instagram tab */}
                   <button
                     onClick={() => setTrendingTab('instagram')}
                     title="Instagram Trending"
-                    className={`flex items-center gap-1.5 px-2.5 py-1.5 rounded-xl text-[11px] font-extrabold transition-all border ${
-                      trendingTab === 'instagram'
-                        ? 'bg-gradient-to-r from-pink-500/15 to-purple-500/10 text-pink-400 border-pink-500/30 shadow-sm shadow-pink-500/10'
-                        : 'text-white/30 border-transparent hover:text-pink-400 hover:bg-pink-500/8'
+                    className={`relative flex items-center gap-1.5 px-2.5 py-1.5 rounded-xl text-[11px] font-extrabold transition-colors ${
+                      trendingTab === 'instagram' ? 'text-pink-400' : 'text-white/30 hover:text-pink-400'
                     }`}
                   >
+                    {trendingTab === 'instagram' && (
+                      <motion.div
+                        layoutId="trending-tab-pill"
+                        className="absolute inset-0 rounded-xl"
+                        style={{
+                          background: 'linear-gradient(135deg, rgba(236,72,153,0.15) 0%, rgba(168,85,247,0.1) 100%)',
+                          border: '1px solid rgba(236,72,153,0.32)',
+                          boxShadow: '0 2px 12px rgba(236,72,153,0.18), inset 0 1px 0 rgba(255,255,255,0.06)',
+                        }}
+                        transition={{ type: 'spring', stiffness: 420, damping: 34 }}
+                      />
+                    )}
                     {/* Instagram SVG icon */}
-                    <svg viewBox="0 0 24 24" className="w-3.5 h-3.5 fill-current" xmlns="http://www.w3.org/2000/svg">
+                    <svg viewBox="0 0 24 24" className="relative z-10 w-3.5 h-3.5 fill-current" xmlns="http://www.w3.org/2000/svg">
                       <path d="M12 2.163c3.204 0 3.584.012 4.85.07 3.252.148 4.771 1.691 4.919 4.919.058 1.265.069 1.645.069 4.849 0 3.205-.012 3.584-.069 4.849-.149 3.225-1.664 4.771-4.919 4.919-1.266.058-1.644.07-4.85.07-3.204 0-3.584-.012-4.849-.07-3.26-.149-4.771-1.699-4.919-4.92-.058-1.265-.07-1.644-.07-4.849 0-3.204.013-3.583.07-4.849.149-3.227 1.664-4.771 4.919-4.919 1.266-.057 1.645-.069 4.849-.069zm0-2.163c-3.259 0-3.667.014-4.947.072-4.358.2-6.78 2.618-6.98 6.98-.059 1.281-.073 1.689-.073 4.948 0 3.259.014 3.668.072 4.948.2 4.358 2.618 6.78 6.98 6.98 1.281.058 1.689.072 4.948.072 3.259 0 3.668-.014 4.948-.072 4.354-.2 6.782-2.618 6.979-6.98.059-1.28.073-1.689.073-4.948 0-3.259-.014-3.667-.072-4.947-.196-4.354-2.617-6.78-6.979-6.98-1.281-.059-1.69-.073-4.949-.073zm0 5.838c-3.403 0-6.162 2.759-6.162 6.162s2.759 6.163 6.162 6.163 6.162-2.759 6.162-6.163c0-3.403-2.759-6.162-6.162-6.162zm0 10.162c-2.209 0-4-1.79-4-4 0-2.209 1.791-4 4-4s4 1.791 4 4c0 2.21-1.791 4-4 4zm6.406-11.845c-.796 0-1.441.645-1.441 1.44s.645 1.44 1.441 1.44c.795 0 1.439-.645 1.439-1.44s-.644-1.44-1.439-1.44z"/>
                     </svg>
-                    Instagram
+                    <span className="relative z-10">Instagram</span>
                   </button>
                 </div>
 
@@ -1418,25 +1627,25 @@ export default function RoomPage() {
                     ).map((s, idx) => (
                       <div
                         key={s.videoId}
-                        className="flex items-center gap-3 px-3 py-2.5 hover:bg-white/[0.03] transition-all group cursor-pointer"
+                        className="row-slide flex items-center gap-3 px-3 py-2.5 hover:bg-white/[0.04] group cursor-pointer"
                         onClick={() => handleSelectResult({ videoId: s.videoId, title: s.title, thumbnail: s.thumbnail, duration: 0, channel: s.channel }, 'play')}
                       >
-                        <span className="text-[10px] text-white/20 font-mono w-4 text-center shrink-0">{idx + 1}</span>
+                        <span className={`text-[10px] font-mono w-4 text-center shrink-0 ${idx < 3 ? 'text-red-400 font-bold' : 'text-white/20'}`}>{idx + 1}</span>
                         <div className="relative shrink-0">
-                          <img src={s.thumbnail} alt={s.title} className="w-12 h-9 object-cover rounded-lg" />
+                          <img src={s.thumbnail} alt={s.title} className="w-12 h-9 object-cover rounded-lg border border-white/8" />
                           <div className="absolute inset-0 bg-black/60 opacity-0 group-hover:opacity-100 transition-opacity rounded-lg flex items-center justify-center">
                             <Play className="w-3.5 h-3.5 text-white fill-white" />
                           </div>
                         </div>
                         <div className="flex-1 min-w-0">
-                          <p className="text-xs font-bold truncate text-white/85">{s.title}</p>
+                          <p className="text-xs font-bold truncate text-white/85 group-hover:text-white transition-colors">{s.title}</p>
                           <p className="text-[10px] text-white/35 truncate mt-0.5">{s.channel}</p>
                         </div>
                         <span className="text-[9px] bg-red-500/10 text-red-400 px-1.5 py-0.5 rounded font-bold border border-red-500/15 shrink-0">{s.badge}</span>
                         <button
                           type="button"
                           onClick={(e) => { e.stopPropagation(); handleSelectResult({ videoId: s.videoId, title: s.title, thumbnail: s.thumbnail, duration: 0, channel: s.channel }, 'queue'); }}
-                          className="w-6 h-6 flex items-center justify-center rounded-lg bg-white/5 hover:bg-red-500/20 text-white/20 hover:text-red-400 border border-white/5 opacity-0 group-hover:opacity-100 shrink-0 transition-all"
+                          className="chip-pop w-6 h-6 flex items-center justify-center rounded-lg bg-white/5 hover:bg-red-500/20 text-white/20 hover:text-red-400 border border-white/8 opacity-0 group-hover:opacity-100 shrink-0"
                           title="Queue"
                         >
                           <Plus className="w-3 h-3" />
@@ -1469,10 +1678,10 @@ export default function RoomPage() {
                           {instaBatches.flat().map((s, index) => (
                             <div
                               key={`${s.videoId}-${index}`}
-                              className="flex flex-col gap-1.5 p-2 bg-white/[0.02] hover:bg-white/[0.06] border border-white/5 rounded-xl transition-all group cursor-pointer min-w-[140px] w-[140px] shrink-0 snap-start"
+                              className="chip-pop flex flex-col gap-1.5 p-2 bg-white/[0.02] hover:bg-white/[0.06] hover:border-pink-500/30 border border-white/5 rounded-xl group cursor-pointer min-w-[150px] w-[150px] xl:min-w-[175px] xl:w-[175px] shrink-0 snap-start"
                               onClick={() => handleSelectResult({ videoId: s.videoId, title: s.title, thumbnail: s.thumbnail, duration: 0, channel: s.channel }, 'play')}
                             >
-                              <div className="relative w-full rounded-lg overflow-hidden" style={{ aspectRatio: '16/9' }}>
+                              <div className="relative w-full rounded-lg overflow-hidden border border-white/8" style={{ aspectRatio: '16/9' }}>
                                 <img src={s.thumbnail} alt={s.title} className="w-full h-full object-cover" />
                                 <div className="absolute inset-0 bg-black/60 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center">
                                   <Play className="w-6 h-6 text-white fill-white drop-shadow-md" />
@@ -1501,10 +1710,15 @@ export default function RoomPage() {
             </div>
 
             {/* ── Music App Song Picker ── */}
-            <div className="border border-white/6 rounded-2xl overflow-hidden bg-white/[0.01]">
-              <div className="flex items-center justify-between px-3 py-2.5 border-b border-white/6 bg-gradient-to-r from-cyan-500/5 to-transparent">
+            <div className="card-gradient-border rounded-2xl overflow-hidden">
+              <div className="flex items-center justify-between px-3 py-2.5 border-b border-white/6 bg-gradient-to-r from-cyan-500/8 to-transparent">
                 <div className="flex flex-wrap items-center gap-2">
-                  <Smartphone className="w-3.5 h-3.5 text-cyan-400" />
+                  <div
+                    className="w-6 h-6 rounded-lg flex items-center justify-center shrink-0"
+                    style={{ background: 'rgba(0,212,212,0.1)', border: '1px solid rgba(0,212,212,0.2)' }}
+                  >
+                    <Smartphone className="w-3.5 h-3.5 text-cyan-400" />
+                  </div>
                   <h3 className="text-xs font-extrabold text-white/80">📱 Mera Mobile Device</h3>
                   <span className="text-[9px] bg-emerald-500/15 text-emerald-400 border border-emerald-500/30 px-2 py-0.5 rounded-full font-bold flex items-center gap-1">
                     <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />
@@ -1517,7 +1731,7 @@ export default function RoomPage() {
                 <button
                   type="button"
                   onClick={() => localFileInputRef.current?.click()}
-                  className="flex items-center gap-1 px-2.5 py-1 rounded-lg bg-cyan-500/10 hover:bg-cyan-500/20 text-cyan-400 border border-cyan-400/20 text-[10px] font-bold transition-all shrink-0"
+                  className="chip-pop flex items-center gap-1 px-2.5 py-1 rounded-lg bg-cyan-500/10 hover:bg-cyan-500/20 text-cyan-400 border border-cyan-400/25 text-[10px] font-bold shrink-0"
                 >
                   📁 Select Audio Files
                 </button>
@@ -1535,9 +1749,12 @@ export default function RoomPage() {
                 <div
                   onClick={() => localFileInputRef.current?.click()}
                   className="py-6 flex flex-col items-center justify-center gap-2 text-white/20 hover:text-white/40 transition-colors cursor-pointer group"
+                  style={{ perspective: '700px' }}
                 >
-                  <div className="w-12 h-12 rounded-2xl bg-white/5 group-hover:bg-cyan-500/10 group-hover:border-cyan-500/30 border border-white/10 flex items-center justify-center transition-all">
-                    <Smartphone className="w-6 h-6 text-cyan-400" />
+                  <div className="animate-float-3d mb-1">
+                    <div className="w-12 h-12 rounded-2xl bg-white/5 group-hover:bg-cyan-500/10 group-hover:border-cyan-500/40 border border-white/10 flex items-center justify-center transition-all shadow-[0_0_24px_rgba(0,212,212,0.0)] group-hover:shadow-[0_0_24px_rgba(0,212,212,0.2)]">
+                      <Smartphone className="w-6 h-6 text-cyan-400" />
+                    </div>
                   </div>
                   <p className="text-xs font-semibold text-center px-4 text-white/80 group-hover:text-cyan-300 transition-colors">
                     Apne mobile device / phone storage se audio files select karein
@@ -1549,15 +1766,15 @@ export default function RoomPage() {
                   {localFiles.map((file, idx) => {
                     const isPlaying = localPlaying === idx && !isLocalPaused;
                     return (
-                      <div key={idx} className={`flex items-center gap-3 px-3 py-2 transition-all group ${localPlaying === idx ? 'bg-cyan-400/[0.04]' : 'hover:bg-white/[0.01]'}`}>
-                        <button onClick={() => playLocalFile(idx)} className={`w-7 h-7 rounded-lg flex items-center justify-center transition-all shrink-0 ${localPlaying === idx ? 'bg-cyan-500 text-black' : 'bg-white/5 text-white/50 hover:bg-cyan-500/25 hover:text-cyan-400'}`}>
+                      <div key={idx} className={`row-slide flex items-center gap-3 px-3 py-2 group ${localPlaying === idx ? 'bg-cyan-400/[0.04]' : 'hover:bg-white/[0.02]'}`}>
+                        <button onClick={() => playLocalFile(idx)} className={`chip-pop w-7 h-7 rounded-lg flex items-center justify-center shrink-0 ${localPlaying === idx ? 'bg-cyan-500 text-black shadow-[0_0_14px_rgba(0,212,212,0.4)]' : 'bg-white/5 text-white/50 hover:bg-cyan-500/25 hover:text-cyan-400 border border-white/8'}`}>
                           {isPlaying ? <Pause className="w-3 h-3" /> : <Play className="w-3 h-3 ml-0.5 fill-current" />}
                         </button>
                         <div className="flex-grow min-w-0">
                           <p className={`text-xs font-semibold truncate ${localPlaying === idx ? 'text-cyan-400' : 'text-white/80'}`}>{file.name}</p>
                           <p className="text-[9px] text-emerald-400/80 font-medium">Saved in Device • Offline Ready</p>
                         </div>
-                        <button onClick={() => removeLocalFile(idx)} className="p-1 rounded text-white/20 hover:text-red-400 hover:bg-red-500/10 transition-all opacity-0 group-hover:opacity-100">
+                        <button onClick={() => removeLocalFile(idx)} className="chip-pop p-1 rounded-lg text-white/20 hover:text-red-400 hover:bg-red-500/10 opacity-0 group-hover:opacity-100">
                           <Trash2 className="w-3 h-3" />
                         </button>
                       </div>
@@ -1681,38 +1898,49 @@ export default function RoomPage() {
         {/* Right Sidebar - Tabbed Chat, Voice call, Spotify Import */}
         <>
           {/* Desktop Right Sidebar */}
-          <div className="hidden lg:flex w-80 xl:w-96 flex-col border-l border-white/6 bg-[#090b14]/50 backdrop-blur-md shrink-0 h-full">
-            <SocialPanel
-              activeTab={sidebarTab}
-              setActiveTab={setSidebarTab}
-              messages={messages}
-              chatInput={chatInput}
-              setChatInput={setChatInput}
-              onSend={handleSendChat}
-              userId={user?.userId || ''}
-              members={members}
-              chatScrollRef={chatScrollRef}
-              
-              // Voice & Video Call
-              inVoice={inVoice}
-              setInVoice={setInVoice}
-              micMuted={micMuted}
-              setMicMuted={setMicMuted}
-              videoEnabled={videoEnabled}
-              setVideoEnabled={setVideoEnabled}
-              activeSpeakers={activeSpeakers}
-              micVolume={micVolume}
-              voiceError={voiceError}
-              mediaStream={mediaStreamRef.current}
-              voiceStates={voiceStates}
-              
-              // Spotify
-              spotifyUrl={spotifyUrl}
-              setSpotifyUrl={setSpotifyUrl}
-              importStatus={importStatus}
-              importProgress={importProgress}
-              onSpotifyImport={handleSpotifyImport}
+          <div className="hidden lg:flex w-80 xl:w-96 2xl:w-[420px] flex-col border-l border-white/8 bg-[#070a16]/60 backdrop-blur-2xl shrink-0 h-full">
+            <TrackDeck
+              current={activeRoom.currentTrack}
+              history={history}
+              isPlaying={activeRoom.isPlaying}
+              accentHue={moodHue}
             />
+            {(activeRoom.currentTrack || history.length > 0) && (
+              <div className="w-full h-px bg-white/6 shrink-0" />
+            )}
+            <div className="flex-1 min-h-0 flex flex-col">
+              <SocialPanel
+                activeTab={sidebarTab}
+                setActiveTab={setSidebarTab}
+                messages={humanMessages}
+                chatInput={chatInput}
+                setChatInput={setChatInput}
+                onSend={handleSendChat}
+                userId={user?.userId || ''}
+                members={members}
+                chatScrollRef={chatScrollRef}
+
+                // Voice & Video Call
+                inVoice={inVoice}
+                setInVoice={setInVoice}
+                micMuted={micMuted}
+                setMicMuted={setMicMuted}
+                videoEnabled={videoEnabled}
+                setVideoEnabled={setVideoEnabled}
+                activeSpeakers={activeSpeakers}
+                micVolume={micVolume}
+                voiceError={voiceError}
+                mediaStream={mediaStreamRef.current}
+                voiceStates={voiceStates}
+
+                // Spotify
+                spotifyUrl={spotifyUrl}
+                setSpotifyUrl={setSpotifyUrl}
+                importStatus={importStatus}
+                importProgress={importProgress}
+                onSpotifyImport={handleSpotifyImport}
+              />
+            </div>
           </div>
 
           {/* Mobile drawer overlay */}
@@ -1726,12 +1954,15 @@ export default function RoomPage() {
                 className="lg:hidden fixed inset-0 z-50 flex flex-col"
                 style={{ top: '56px' }}
               >
-                <div className="flex-1 bg-[#090b14] flex flex-col">
-                  <div className="flex items-center justify-between px-4 py-2 border-b border-white/6">
-                    <h3 className="font-extrabold text-xs tracking-wider uppercase text-cyan-400">Social Console</h3>
+                <div className="flex-1 min-h-0 bg-[#090b14] flex flex-col overflow-hidden">
+                  <div className="flex items-center justify-between px-4 py-2.5 border-b border-white/8 bg-black/30">
+                    <h3 className="font-extrabold text-[11px] tracking-[0.18em] uppercase text-cyan-400 flex items-center gap-2">
+                      <span className="w-4 h-px bg-gradient-to-r from-cyan-400/70 to-transparent inline-block" />
+                      Social Console
+                    </h3>
                     <button
                       onClick={() => setShowChat(false)}
-                      className="p-1 rounded-lg bg-white/5 hover:bg-white/10"
+                      className="chip-pop p-1.5 rounded-lg bg-white/5 hover:bg-white/10 border border-white/8 text-white/50"
                     >
                       <X className="w-4 h-4" />
                     </button>
@@ -1739,7 +1970,7 @@ export default function RoomPage() {
                   <SocialPanel
                     activeTab={sidebarTab}
                     setActiveTab={setSidebarTab}
-                    messages={messages}
+                    messages={humanMessages}
                     chatInput={chatInput}
                     setChatInput={setChatInput}
                     onSend={handleSendChat}
@@ -1790,7 +2021,7 @@ function LocalVideoTile({ stream }: { stream: MediaStream | null }) {
   if (!stream || stream.getVideoTracks().length === 0) return null;
 
   return (
-    <div className="relative w-full h-36 rounded-xl overflow-hidden border border-cyan-400/40 shadow-lg shadow-cyan-500/10 bg-black">
+    <div className="relative w-full h-36 rounded-xl overflow-hidden border border-cyan-400/40 shadow-[0_0_24px_rgba(0,212,212,0.15)] bg-black">
       <video
         ref={videoRef}
         autoPlay
@@ -1868,30 +2099,50 @@ const SocialPanel = memo(function SocialPanel({
   onSpotifyImport: (e: React.FormEvent) => void;
 }) {
   return (
-    <div className="flex flex-col h-full overflow-hidden">
+    <div className="flex flex-col flex-1 min-h-0 overflow-hidden">
       {/* Sidebar Tabs Head */}
-      <div className="flex border-b border-white/6 bg-black/20 shrink-0 p-1 gap-1">
+      <div className="flex border-b border-white/6 bg-black/25 shrink-0 p-1.5 gap-1">
         <button
           onClick={() => setActiveTab('chat')}
-          className={`flex-1 flex items-center justify-center gap-1.5 py-2.5 rounded-xl text-xs font-bold transition-all border ${
-            activeTab === 'chat'
-              ? 'bg-cyan-500/10 text-cyan-400 border-cyan-400/25 shadow-sm'
-              : 'text-white/40 border-transparent hover:text-white/60'
+          className={`relative flex-1 flex items-center justify-center gap-1.5 py-2.5 rounded-xl text-xs font-bold transition-colors ${
+            activeTab === 'chat' ? 'text-cyan-300' : 'text-white/40 hover:text-white/60'
           }`}
         >
-          <MessageCircle className="w-3.5 h-3.5" />
-          <span>Chat</span>
+          {activeTab === 'chat' && (
+            <motion.div
+              layoutId="social-tab-pill"
+              className="absolute inset-0 rounded-xl"
+              style={{
+                background: 'rgba(0,212,212,0.12)',
+                border: '1px solid rgba(0,212,212,0.3)',
+                boxShadow: '0 0 16px rgba(0,212,212,0.15), inset 0 1px 0 rgba(255,255,255,0.06)',
+              }}
+              transition={{ type: 'spring', stiffness: 420, damping: 34 }}
+            />
+          )}
+          <MessageCircle className="relative z-10 w-3.5 h-3.5" />
+          <span className="relative z-10">Chat</span>
         </button>
         <button
           onClick={() => setActiveTab('spotify')}
-          className={`flex-1 flex items-center justify-center gap-1.5 py-2.5 rounded-xl text-xs font-bold transition-all border ${
-            activeTab === 'spotify'
-              ? 'bg-purple-500/10 text-purple-400 border-purple-500/25 shadow-sm'
-              : 'text-white/40 border-transparent hover:text-white/60'
+          className={`relative flex-1 flex items-center justify-center gap-1.5 py-2.5 rounded-xl text-xs font-bold transition-colors ${
+            activeTab === 'spotify' ? 'text-purple-300' : 'text-white/40 hover:text-white/60'
           }`}
         >
-          <Sparkles className="w-3.5 h-3.5" />
-          <span>Spotify Import</span>
+          {activeTab === 'spotify' && (
+            <motion.div
+              layoutId="social-tab-pill"
+              className="absolute inset-0 rounded-xl"
+              style={{
+                background: 'linear-gradient(135deg, rgba(168,85,247,0.14) 0%, rgba(124,58,237,0.1) 100%)',
+                border: '1px solid rgba(168,85,247,0.3)',
+                boxShadow: '0 0 16px rgba(168,85,247,0.15), inset 0 1px 0 rgba(255,255,255,0.06)',
+              }}
+              transition={{ type: 'spring', stiffness: 420, damping: 34 }}
+            />
+          )}
+          <Sparkles className="relative z-10 w-3.5 h-3.5" />
+          <span className="relative z-10">Spotify Import</span>
         </button>
       </div>
 
@@ -1909,26 +2160,35 @@ const SocialPanel = memo(function SocialPanel({
             >
               {/* Members listening header */}
               <div className="px-4 py-3 border-b border-white/6 shrink-0 bg-black/10">
-                <p className="text-[10px] text-white/30 uppercase tracking-widest font-extrabold mb-2">
+                <p className="text-[10px] text-white/30 uppercase tracking-[0.2em] font-extrabold mb-2 flex items-center gap-2">
+                  <span className="w-4 h-px bg-gradient-to-r from-cyan-400/60 to-transparent inline-block" />
                   {members.length} {members.length === 1 ? 'Person' : 'People'} Vibe-Listening
                 </p>
                 <div className="flex flex-wrap gap-1.5 max-h-[75px] overflow-y-auto scrollbar-hide">
-                  {members.map((m) => (
-                    <div
-                      key={m.userId}
-                      className="flex items-center gap-1.5 bg-white/3 border border-white/6 rounded-full px-2.5 py-1"
-                    >
+                  {members.map((m) => {
+                    const isSpeaking = activeSpeakers?.includes(m.userId);
+                    return (
                       <div
-                        className="w-4 h-4 rounded-full flex items-center justify-center text-[8px] font-bold text-white shrink-0"
-                        style={{ backgroundColor: m.avatarColor }}
+                        key={m.userId}
+                        className={`flex items-center gap-1.5 border rounded-full px-2.5 py-1 transition-all duration-200 ${
+                          isSpeaking
+                            ? 'border-cyan-400/60 bg-cyan-400/10 shadow-[0_0_12px_rgba(0,212,212,0.25)]'
+                            : 'bg-white/[0.04] border-white/8'
+                        }`}
                       >
-                        {m.displayName.charAt(0).toUpperCase()}
+                        <div
+                          className={`w-4 h-4 rounded-full flex items-center justify-center text-[8px] font-bold text-white shrink-0 transition-shadow ${isSpeaking ? 'ring-2 ring-cyan-400/60' : ''}`}
+                          style={{ backgroundColor: m.avatarColor }}
+                        >
+                          {m.displayName.charAt(0).toUpperCase()}
+                        </div>
+                        <span className={`text-[10px] font-semibold max-w-[65px] truncate ${isSpeaking ? 'text-cyan-300' : 'text-white/70'}`}>
+                          {m.displayName}
+                        </span>
+                        {isSpeaking && <Volume2 className="w-2.5 h-2.5 text-cyan-400 animate-pulse shrink-0" />}
                       </div>
-                      <span className="text-[10px] text-white/70 font-semibold max-w-[65px] truncate">
-                        {m.displayName}
-                      </span>
-                    </div>
-                  ))}
+                    );
+                  })}
                 </div>
               </div>
 
@@ -1955,21 +2215,6 @@ const SocialPanel = memo(function SocialPanel({
                       const showAvatar = !isMe && prevMsg?.userId !== msg.userId;
                       const showName = !isMe && showAvatar;
 
-                      if (msg.isSystem) {
-                        return (
-                          <motion.div
-                            key={msg.id}
-                            initial={{ opacity: 0, y: 4 }}
-                            animate={{ opacity: 1, y: 0 }}
-                            className="flex justify-center py-0.5"
-                          >
-                            <span className="text-[10px] text-white/40 bg-white/3 border border-white/5 rounded-full px-3 py-1 font-medium text-center max-w-[85%] leading-relaxed">
-                              {msg.text}
-                            </span>
-                          </motion.div>
-                        );
-                      }
-
                       return (
                         <motion.div
                           key={msg.id}
@@ -1995,10 +2240,10 @@ const SocialPanel = memo(function SocialPanel({
                               </span>
                             )}
                             <div
-                              className={`rounded-2xl px-3.5 py-2 text-xs leading-relaxed break-words shadow-sm ${
+                              className={`rounded-2xl px-3.5 py-2 text-xs leading-relaxed break-words ${
                                 isMe
-                                  ? 'bg-gradient-to-br from-cyan-400 to-blue-500 text-black font-semibold rounded-br-sm'
-                                  : 'bg-white/5 text-white/90 rounded-bl-sm border border-white/6'
+                                  ? 'bg-gradient-to-br from-cyan-400 to-blue-500 text-black font-semibold rounded-br-md shadow-[0_4px_16px_rgba(0,212,212,0.25)]'
+                                  : 'bg-white/[0.06] text-white/90 rounded-bl-md border border-white/8 shadow-[0_2px_10px_rgba(0,0,0,0.25)]'
                               }`}
                             >
                               {msg.text}
@@ -2016,7 +2261,7 @@ const SocialPanel = memo(function SocialPanel({
 
               {/* Chat Input form */}
               <form onSubmit={onSend} className="p-3 border-t border-white/6 bg-black/10 shrink-0">
-                <div className="flex items-center gap-2 bg-white/[0.03] border border-white/8 rounded-xl px-3 py-1.5 focus-within:border-cyan-400/30 transition-all">
+                <div className="input-glow flex items-center gap-2 bg-white/[0.03] border border-white/8 rounded-xl px-3 py-1.5 focus-within:border-cyan-400/40 transition-all">
                   <input
                     type="text"
                     placeholder="Chat with the room..."
@@ -2027,7 +2272,7 @@ const SocialPanel = memo(function SocialPanel({
                   <button
                     type="submit"
                     disabled={!chatInput.trim()}
-                    className="w-7 h-7 flex items-center justify-center rounded-lg bg-cyan-500 hover:opacity-95 text-black disabled:opacity-30 shrink-0 transition-all"
+                    className="chip-pop w-7 h-7 flex items-center justify-center rounded-lg bg-gradient-to-br from-cyan-400 to-blue-500 text-black disabled:opacity-30 disabled:from-white/20 disabled:to-white/20 shrink-0"
                   >
                     <Send className="w-3.5 h-3.5" />
                   </button>
@@ -2047,11 +2292,18 @@ const SocialPanel = memo(function SocialPanel({
             >
               <div className="space-y-4">
                 <div className="flex items-center gap-3">
-                  <div className="w-10 h-10 rounded-xl bg-purple-500/15 border border-purple-500/20 flex items-center justify-center shrink-0">
-                    <Sparkles className="w-5.5 h-5.5 text-purple-400" />
+                  <div
+                    className="w-10 h-10 rounded-xl flex items-center justify-center shrink-0"
+                    style={{
+                      background: 'linear-gradient(145deg, rgba(168,85,247,0.22), rgba(124,58,237,0.08))',
+                      border: '1px solid rgba(168,85,247,0.35)',
+                      boxShadow: '0 0 20px rgba(168,85,247,0.18), inset 0 1px 0 rgba(255,255,255,0.08)',
+                    }}
+                  >
+                    <Sparkles className="w-5 h-5 text-purple-400" />
                   </div>
                   <div>
-                    <h4 className="text-sm font-bold text-white">Spotify Playlist Importer</h4>
+                    <h4 className="text-sm font-bold text-white" style={{ fontFamily: 'var(--app-font-display)' }}>Spotify Playlist Importer</h4>
                     <p className="text-[11px] text-white/40 leading-normal">
                       Paste playlist URL to add tracks directly to the room's listening queue.
                     </p>
@@ -2066,14 +2318,14 @@ const SocialPanel = memo(function SocialPanel({
                         placeholder="https://open.spotify.com/playlist/..."
                         value={spotifyUrl}
                         onChange={(e) => setSpotifyUrl(e.target.value)}
-                        className="w-full px-3.5 py-3 rounded-xl bg-white/[0.03] border border-white/8 outline-none text-xs focus:border-purple-400/40 focus:bg-white/[0.05] transition-all"
+                        className="input-glow w-full px-3.5 py-3 rounded-xl bg-white/[0.03] border border-white/8 outline-none text-xs focus:border-purple-400/50 transition-all"
                         required
                       />
                     </div>
                     <button
                       type="submit"
                       disabled={!spotifyUrl.trim()}
-                      className="w-full py-3.5 rounded-xl font-bold transition-all flex items-center justify-center gap-2 text-xs text-white"
+                      className="btn-shine w-full py-3.5 rounded-xl font-bold transition-all flex items-center justify-center gap-2 text-xs text-white disabled:opacity-40 cursor-pointer"
                       style={{
                         background: spotifyUrl.trim()
                           ? 'linear-gradient(135deg, #a855f7 0%, #7c3aed 100%)'
@@ -2081,7 +2333,7 @@ const SocialPanel = memo(function SocialPanel({
                         border: spotifyUrl.trim()
                           ? '1px solid rgba(168,85,247,0.3)'
                           : '1px solid rgba(255,255,255,0.08)',
-                        boxShadow: spotifyUrl.trim() ? '0 6px 18px rgba(124,58,237,0.2)' : 'none',
+                        boxShadow: spotifyUrl.trim() ? '0 6px 20px rgba(124,58,237,0.25)' : 'none',
                       }}
                     >
                       <Library className="w-4 h-4" />
@@ -2113,14 +2365,14 @@ const SocialPanel = memo(function SocialPanel({
                       <div className="w-full bg-white/5 h-1.5 rounded-full overflow-hidden">
                         <div
                           className="h-full bg-gradient-to-r from-purple-500 to-indigo-500 transition-all duration-500 rounded-full"
-                          style={{ width: `${importProgress}%` }}
+                          style={{ width: `${importProgress}%`, boxShadow: '0 0 12px rgba(168,85,247,0.6)' }}
                         />
                       </div>
                     </div>
 
                     {/* Showing tracks list matching during matching stages */}
                     <div className="space-y-2">
-                      <p className="text-[10px] text-white/30 uppercase tracking-widest font-bold">Matched Playlist Items</p>
+                      <p className="text-[10px] text-white/30 uppercase tracking-[0.2em] font-bold">Matched Playlist Items</p>
                       <div className="space-y-1.5">
                         {[
                           { title: 'Arijit Singh - Tum Hi Ho', status: importProgress >= 40 ? 'matched' : 'pending' },
@@ -2131,13 +2383,13 @@ const SocialPanel = memo(function SocialPanel({
                         ].map((track, i) => (
                           <div
                             key={i}
-                            className="flex items-center justify-between text-xs px-3 py-2 rounded-lg bg-white/[0.01] border border-white/5"
+                            className="row-slide flex items-center justify-between text-xs px-3 py-2 rounded-lg bg-white/[0.01] border border-white/5 hover:border-purple-500/25"
                           >
                             <span className={`truncate ${track.status === 'matched' ? 'text-white/80' : 'text-white/20'}`}>
                               {track.title}
                             </span>
                             <span
-                              className={`text-[9px] font-bold uppercase tracking-wider ${
+                              className={`text-[9px] font-bold uppercase tracking-wider shrink-0 ml-2 ${
                                 track.status === 'matched' ? 'text-green-400' : 'text-white/10'
                               }`}
                             >

@@ -1,3 +1,66 @@
-<svg width="180" height="180" viewBox="0 0 180 180" fill="none" xmlns="http://www.w3.org/2000/svg">
-<rect width="180" height="180" rx="36" fill="#FF3C00"/>
+<svg width="128" height="128" viewBox="0 0 128 128" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <defs><linearGradient id="bg" x1="0" y1="0" x2="128" y2="128" gradientUnits="userSpaceOnUse">
+    <stop offset="0" stop-color="#0b1a33"/><stop offset="1" stop-color="#070d1c"/>
+  </linearGradient></defs>
+  <rect width="128" height="128" rx="30" fill="url(#bg)"/>
+  
+  <defs>
+    <linearGradient id="band" x1="20" y1="24" x2="108" y2="96" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#22d3ee"/>
+      <stop offset="0.5" stop-color="#4f8ef7"/>
+      <stop offset="1" stop-color="#a855f7"/>
+    </linearGradient>
+    <linearGradient id="cupL" x1="13" y1="64" x2="32" y2="96" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#67e8f9"/>
+      <stop offset="1" stop-color="#2563eb"/>
+    </linearGradient>
+    <linearGradient id="cupR" x1="96" y1="64" x2="115" y2="96" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#c4b5fd"/>
+      <stop offset="1" stop-color="#7c3aed"/>
+    </linearGradient>
+    <linearGradient id="figL" x1="35" y1="46" x2="47" y2="86" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#7dd3fc"/>
+      <stop offset="1" stop-color="#22d3ee"/>
+    </linearGradient>
+    <linearGradient id="figR" x1="69" y1="46" x2="81" y2="86" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#d8b4fe"/>
+      <stop offset="1" stop-color="#8b5cf6"/>
+    </linearGradient>
+    <linearGradient id="pageL" x1="34" y1="88" x2="64" y2="112" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#38bdf8"/>
+      <stop offset="1" stop-color="#818cf8"/>
+    </linearGradient>
+    <linearGradient id="pageR" x1="64" y1="88" x2="94" y2="112" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#a5b4fc"/>
+      <stop offset="1" stop-color="#22d3ee"/>
+    </linearGradient>
+    <linearGradient id="bar" x1="0" y1="50" x2="0" y2="86" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#ffffff"/>
+      <stop offset="1" stop-color="#a5f3fc"/>
+    </linearGradient>
+  </defs>
+
+  <g id="mark">
+    <!-- headphone band -->
+    <path d="M26 74 V64 a38 38 0 0 1 76 0 V74" stroke="url(#band)" stroke-width="11" stroke-linecap="round"/>
+    <!-- ear cups -->
+    <rect x="13" y="64" width="19" height="33" rx="9.5" fill="url(#cupL)"/>
+    <rect x="96" y="64" width="19" height="33" rx="9.5" fill="url(#cupR)"/>
+
+    <!-- open book, laid flat in front -->
+    <path d="M64 97C57.5 90.5 46.5 88 34 90V108c12.5-2 23.5.5 30 7.5z" fill="url(#pageL)"/>
+    <path d="M64 97c6.5-6.5 17.5-9 30-7V108c-12.5-2-23.5.5-30 7.5z" fill="url(#pageR)"/>
+    <path d="M64 97v18.5" stroke="#020617" stroke-opacity="0.4" stroke-width="2.2"/>
+
+    <!-- two listeners, seated behind the book -->
+    <circle cx="47" cy="57" r="8.5" fill="url(#figL)"/>
+    <path d="M35 92v-4.5c0-6.6 5.4-12 12-12s12 5.4 12 12V92z" fill="url(#figL)"/>
+    <circle cx="81" cy="57" r="8.5" fill="url(#figR)"/>
+    <path d="M69 92v-4.5c0-6.6 5.4-12 12-12s12 5.4 12 12V92z" fill="url(#figR)"/>
+
+    <!-- shared beat rising between them -->
+    <rect x="58.6" y="64" width="3.4" height="22" rx="1.7" fill="url(#bar)"/>
+    <rect x="63.3" y="48" width="3.4" height="38" rx="1.7" fill="url(#bar)"/>
+    <rect x="68" y="58" width="3.4" height="28" rx="1.7" fill="url(#bar)"/>
+  </g>
 </svg>

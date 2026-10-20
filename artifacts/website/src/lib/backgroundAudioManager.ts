@@ -124,9 +124,9 @@ class BackgroundAudioManager {
             ]
           : [
               {
-                src: '/favicon.ico',
-                sizes: '64x64',
-                type: 'image/x-icon',
+                src: '/brand-icon-192.png',
+                sizes: '192x192',
+                type: 'image/png',
               },
             ],
       });

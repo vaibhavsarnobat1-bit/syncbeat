@@ -5,10 +5,28 @@ import {
   Shield, Volume2, ArrowLeft,
   Home as HomeIcon, Trash2, Mail
 } from 'lucide-react';
-import { useLoginAnonymous } from '@workspace/api-client-react';
+import { useLoginAnonymous, useLoginGoogle } from '@workspace/api-client-react';
 import { useAuthStore } from '@/lib/store';
+import { BrandMark } from '@/components/BrandMark';
 import { ElementsCollection } from '@designcodeio/threeui';
 import '@designcodeio/threeui/style.css';
+
+const GOOGLE_CLIENT_ID = import.meta.env.VITE_GOOGLE_CLIENT_ID;
+const googleAuthEnabled = Boolean(GOOGLE_CLIENT_ID);
+
+interface GoogleCredentialResponse { credential: string }
+interface GoogleIdApi {
+  initialize: (config: {
+    client_id: string;
+    callback: (response: GoogleCredentialResponse) => void;
+  }) => void;
+  renderButton: (parent: HTMLElement, options: Record<string, unknown>) => void;
+}
+declare global {
+  interface Window {
+    google?: { accounts: { id: GoogleIdApi } };
+  }
+}
 
 const SAVED_ACCOUNTS_KEY = 'lt_saved_accounts';
 
@@ -67,7 +85,13 @@ export default function Login() {
   const [displayName, setDisplayName] = useState('');
   const [email, setEmail] = useState('');
   const [savedAccounts, setSavedAccounts] = useState<SavedAccount[]>([]);
+  const [gisReady, setGisReady] = useState(false);
+  const [googleError, setGoogleError] = useState('');
+  const [comingSoon, setComingSoon] = useState(false);
+  const comingSoonTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const inputRef = useRef<HTMLInputElement>(null);
+  const googleBtnRef = useRef<HTMLDivElement>(null);
+  const googleCredentialRef = useRef<(credential: string) => void>(() => {});
 
   const params = new URLSearchParams(search);
   const inviteCode = params.get('invite');
@@ -76,11 +100,20 @@ export default function Login() {
     if (user) setLocation(inviteCode ? `/room/${inviteCode}` : '/lobby');
     const accounts = getSavedAccounts();
     setSavedAccounts(accounts);
-    // Auto-show Google chooser if any Google accounts saved
-    if (accounts.some(a => a.loginType === 'google')) {
-      setStep('choose-google');
-    }
   }, [user, inviteCode, setLocation]);
+
+  // Google login is parked — clicking the button just shows "Coming Soon"
+  const handleComingSoonClick = () => {
+    setComingSoon(true);
+    if (comingSoonTimer.current) clearTimeout(comingSoonTimer.current);
+    comingSoonTimer.current = setTimeout(() => setComingSoon(false), 2400);
+  };
+
+  useEffect(() => {
+    return () => {
+      if (comingSoonTimer.current) clearTimeout(comingSoonTimer.current);
+    };
+  }, []);
 
   useEffect(() => {
     if (step === 'google' || step === 'anon') {
@@ -96,6 +129,78 @@ export default function Login() {
       }
     }
   });
+
+  const { mutate: loginGoogle, isPending: googlePending } = useLoginGoogle({
+    mutation: {
+      onSuccess: (data: any) => {
+        setGoogleError('');
+        setUser(data);
+        if (data?.email) {
+          saveAccount({
+            displayName: data.displayName,
+            avatarColor: data.avatarColor,
+            loginType: 'google',
+            email: data.email,
+            photoUrl: data.photoUrl,
+          });
+        }
+        setLocation(inviteCode ? `/room/${inviteCode}` : '/lobby');
+      },
+      onError: (err: any) => {
+        const msg = err?.data?.error || err?.message || 'Google login failed. Please try again.';
+        setGoogleError(String(msg));
+      }
+    }
+  });
+
+  useEffect(() => {
+    googleCredentialRef.current = (credential: string) => {
+      loginGoogle({ data: { credential } });
+    };
+  });
+
+  // Load Google Identity Services script once
+  useEffect(() => {
+    if (!googleAuthEnabled) return;
+    const existing = document.getElementById('google-gsi-script');
+    if (existing) {
+      if (window.google?.accounts?.id) setGisReady(true);
+      else existing.addEventListener('load', () => setGisReady(true));
+      return;
+    }
+    const script = document.createElement('script');
+    script.id = 'google-gsi-script';
+    script.src = 'https://accounts.google.com/gsi/client';
+    script.async = true;
+    script.defer = true;
+    script.addEventListener('load', () => setGisReady(true));
+    document.head.appendChild(script);
+  }, [googleAuthEnabled]);
+
+  useEffect(() => {
+    if (!gisReady || !GOOGLE_CLIENT_ID) return;
+    window.google?.accounts.id.initialize({
+      client_id: GOOGLE_CLIENT_ID,
+      callback: (resp) => googleCredentialRef.current(resp.credential),
+    });
+  }, [gisReady]);
+
+  // Render the official Google button (opens the device account picker)
+  useEffect(() => {
+    if (!gisReady || step !== 'home' || !googleBtnRef.current) return;
+    const container = googleBtnRef.current;
+    if (container.childElementCount > 0) return;
+    const width = Math.min(Math.max(container.clientWidth || 320, 200), 400);
+    window.google?.accounts.id.renderButton(container, {
+      type: 'standard',
+      theme: 'outline',
+      size: 'large',
+      text: 'continue_with',
+      shape: 'pill',
+      logo_alignment: 'left',
+      width,
+    });
+  }, [gisReady, step]);
 
   const doLogin = (name: string, type: 'google' | 'anon', userEmail?: string, photoUrl?: string) => {
     const color = getRandomColor();
@@ -143,7 +248,7 @@ export default function Login() {
         </div>
         <div className="pointer-events-auto flex items-center gap-2.5">
           <div className="hidden sm:flex items-center gap-2 px-3 py-1.5 rounded-full bg-[#060708]/70 border border-cyan-500/20 backdrop-blur-xl shadow-lg">
-            <img src="/logo.png" alt="Logo" className="w-4 h-4 rounded-full object-cover" />
+            <BrandMark size={18} title="SyncBeat logo" />
             <span className="text-xs font-semibold tracking-wide text-cyan-200">SyncBeat</span>
           </div>
           <a href="/admin" id="admin-link" className="flex items-center gap-1.5 px-3.5 py-1.5 rounded-xl bg-black/40 hover:bg-black/60 border border-white/10 hover:border-cyan-400/30 text-white/60 hover:text-white transition-all backdrop-blur-md group">
@@ -157,8 +262,8 @@ export default function Login() {
       <div className="max-w-sm w-full relative z-10 my-6">
         {/* Hero Header - Compact */}
         <div className="text-center mb-4">
-          <div className="relative mx-auto mb-2.5 w-12 h-12 rounded-xl overflow-hidden p-[2px] bg-gradient-to-tr from-cyan-500 via-purple-500 to-pink-500 shadow-lg shadow-cyan-500/30">
-            <img src="/logo.png" alt="SyncBeat Logo" className="w-full h-full object-cover rounded-[10px]" />
+          <div className="relative mx-auto mb-2.5 w-12 h-12 rounded-xl bg-[#070d1c]/85 ring-1 ring-cyan-400/25 shadow-lg shadow-cyan-500/30 flex items-center justify-center">
+            <BrandMark variant="intro" size={42} title="SyncBeat logo" />
           </div>
           <h1 className="text-2xl font-extrabold tracking-tight">
             <span className="bg-gradient-to-r from-white via-cyan-100 to-cyan-300 bg-clip-text text-transparent">SyncBeat</span>
@@ -384,14 +489,36 @@ export default function Login() {
 
               {/* Login options */}
               <div className="space-y-3">
-                <button
-                  id="btn-google-login"
-                  onClick={() => setStep('google')}
-                  className="w-full flex items-center justify-center gap-3 bg-white hover:bg-slate-100 active:bg-slate-200 text-slate-900 py-3.5 px-6 rounded-2xl font-bold transition-all shadow-md cursor-pointer active:scale-[0.99]"
-                >
-                  <GoogleLogo size={20} />
-                  Continue with Google
-                </button>
+                {googleAuthEnabled ? (
+                  <div className="space-y-2">
+                    <div ref={googleBtnRef} id="btn-google-login" className="w-full min-h-[44px] flex justify-center" />
+                    {googlePending && (
+                      <p className="flex items-center justify-center gap-2 text-xs text-cyan-200/70">
+                        <span className="w-3.5 h-3.5 border-2 border-cyan-400 border-t-transparent rounded-full animate-spin" />
+                        Signing you in...
+                      </p>
+                    )}
+                    {googleError && (
+                      <p className="text-xs text-red-400 text-center">{googleError}</p>
+                    )}
+                  </div>
+                ) : (
+                  <button
+                    id="btn-google-login"
+                    onClick={handleComingSoonClick}
+                    className="relative w-full flex items-center justify-center gap-3 bg-white/85 hover:bg-white/95 active:bg-slate-200 text-slate-700 py-3.5 px-6 rounded-2xl font-bold transition-all shadow-md cursor-pointer active:scale-[0.99] overflow-hidden"
+                  >
+                    <GoogleLogo size={20} />
+                    <span className={comingSoon ? 'animate-pulse' : ''}>
+                      {comingSoon ? 'Coming Soon...' : 'Continue with Google'}
+                    </span>
+                    {!comingSoon && (
+                      <span className="absolute top-1.5 right-2 text-[8px] font-extrabold uppercase tracking-widest bg-amber-100 text-amber-700 border border-amber-300 px-1.5 py-0.5 rounded-full">
+                        Soon
+                      </span>
+                    )}
+                  </button>
+                )}
 
                 <div className="relative flex items-center py-1">
                   <div className="flex-grow border-t border-white/10" />
@@ -525,8 +652,7 @@ export default function Login() {
                   onClick={() => {
                     setDisplayName('');
                     setEmail('');
-                    const accs = getSavedAccounts();
-                    setStep(accs.some(a => a.loginType === 'google') ? 'choose-google' : 'home');
+                    setStep('home');
                   }}
                   className="px-4 py-3 rounded-2xl font-semibold text-sm text-white/60 hover:text-white transition-colors bg-white/[0.05] border border-white/10 hover:border-white/20 cursor-pointer active:scale-[0.98]"
                 >

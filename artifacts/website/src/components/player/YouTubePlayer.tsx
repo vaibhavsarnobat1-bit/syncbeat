@@ -26,6 +26,8 @@ interface YouTubePlayerProps {
   isHost: boolean;
   getTimeRef?: React.MutableRefObject<(() => number) | null>;
   playerControlRef?: React.MutableRefObject<PlayerControls | null>;
+  trackTitle?: string;
+  trackThumbnail?: string;
 }
 
 export function YouTubePlayer({
@@ -38,6 +40,8 @@ export function YouTubePlayer({
   remoteState,
   getTimeRef,
   playerControlRef,
+  trackTitle,
+  trackThumbnail,
 }: YouTubePlayerProps) {
   const playerRef = useRef<any>(null);
   const wrapperRef = useRef<HTMLDivElement>(null);
@@ -272,14 +276,14 @@ export function YouTubePlayer({
       }
     } else if (remoteState.action === 'play') {
       // 1. Calculate ultra-precise network latency compensation
-      remoteLockUntilRef.current = Date.now() + 1200;
+      remoteLockUntilRef.current = Date.now() + 1000;
       lastReportedStateRef.current = 'play';
       const latency = Math.max(0, (Date.now() - (remoteState.timestamp || Date.now())) / 1000);
-      const target = (remoteState.currentTime || 0) + (latency < 3 ? latency : 0);
+      const target = (remoteState.currentTime || 0) + (latency < 2 ? latency : 0);
       const current = playerRef.current.getCurrentTime?.() ?? 0;
 
-      // Frame align if drift > 200ms
-      if (Math.abs(current - target) > 0.2) {
+      // Frame align immediately if drift > 120ms to eliminate delay
+      if (Math.abs(current - target) > 0.12) {
         try {
           playerRef.current.seekTo(target, true);
         } catch {}
@@ -288,7 +292,7 @@ export function YouTubePlayer({
         playerRef.current.playVideo();
       } catch {}
     } else if (remoteState.action === 'seek') {
-      remoteLockUntilRef.current = Date.now() + 1200;
+      remoteLockUntilRef.current = Date.now() + 1000;
       try {
         playerRef.current.seekTo(remoteState.currentTime || 0, true);
       } catch {}
@@ -297,13 +301,13 @@ export function YouTubePlayer({
       // If playing, check drift against calculated expected time:
       if (isPlaying && state === window.YT.PlayerState.PLAYING) {
         const latency = Math.max(0, (Date.now() - (remoteState.timestamp || Date.now())) / 1000);
-        const expected = remoteState.currentTime + (latency < 3 ? latency : 0);
+        const expected = remoteState.currentTime + (latency < 2 ? latency : 0);
         const current = playerRef.current.getCurrentTime?.() ?? 0;
         const drift = Math.abs(current - expected);
 
-        // Auto-correct if drift exceeds 300ms
-        if (drift > 0.3) {
-          remoteLockUntilRef.current = Date.now() + 800;
+        // Auto-correct if drift exceeds 180ms so other device catches up instantly
+        if (drift > 0.18) {
+          remoteLockUntilRef.current = Date.now() + 600;
           try {
             playerRef.current.seekTo(expected, true);
           } catch {}
@@ -366,10 +370,10 @@ export function YouTubePlayer({
         />
       )}
 
-      {/* Paused Screen Overlay: Shields YouTube 'More Videos' grid & allows instant 1-click resume */}
+      {/* Paused Screen Overlay: Shields YouTube 'More Videos' grid & allows instant 1-click animated resume */}
       {!isPlaying && !embedError && (
         <div
-          className="absolute inset-x-0 top-14 bottom-14 z-20 cursor-pointer flex items-center justify-center bg-black/40 backdrop-blur-[2px] transition-all hover:bg-black/30"
+          className="absolute inset-0 z-20 cursor-pointer flex flex-col items-center justify-center bg-black/60 backdrop-blur-[4px] transition-all duration-300 hover:bg-black/50 select-none group/pause"
           onClick={(e) => {
             e.preventDefault();
             e.stopPropagation();
@@ -381,11 +385,32 @@ export function YouTubePlayer({
             }
           }}
         >
-          <div className="w-16 h-16 rounded-full bg-gradient-to-r from-cyan-500 to-blue-600 hover:scale-110 active:scale-95 text-white flex items-center justify-center shadow-xl shadow-cyan-500/50 border border-white/30 transform transition-all">
-            <svg className="w-8 h-8 ml-1 fill-current text-white" viewBox="0 0 24 24">
-              <path d="M8 5v14l11-7z" />
-            </svg>
+          {/* Animated Ambient Pulse Rings */}
+          <div className="relative flex items-center justify-center">
+            <span className="absolute w-28 h-28 rounded-full bg-cyan-500/20 animate-ping opacity-75 pointer-events-none" />
+            <span className="absolute w-24 h-24 rounded-full bg-gradient-to-tr from-cyan-500/30 to-blue-500/30 blur-md animate-pulse pointer-events-none" />
+
+            {/* Glowing Play Icon Core */}
+            <div className="relative w-16 h-16 sm:w-20 sm:h-20 rounded-full bg-gradient-to-tr from-cyan-500 via-blue-500 to-indigo-600 text-white flex items-center justify-center shadow-[0_0_35px_rgba(6,182,212,0.6)] border-2 border-white/40 transform transition-all duration-300 group-hover/pause:scale-115 group-hover/pause:shadow-[0_0_50px_rgba(6,182,212,0.9)] active:scale-95">
+              <svg className="w-8 h-8 sm:w-10 sm:h-10 ml-1 fill-current text-white drop-shadow-md" viewBox="0 0 24 24">
+                <path d="M8 5v14l11-7z" />
+              </svg>
+            </div>
           </div>
+
+          {/* Pause Status Indicator Badge */}
+          <div className="mt-4 px-3.5 py-1 rounded-full bg-white/10 backdrop-blur-md border border-white/15 flex items-center gap-2 transform transition-transform group-hover/pause:scale-105">
+            <span className="w-2 h-2 rounded-full bg-amber-400 animate-pulse" />
+            <span className="text-[11px] sm:text-xs font-bold text-white/90 tracking-wide uppercase">
+              Paused • Tap to Play Together
+            </span>
+          </div>
+
+          {trackTitle && (
+            <p className="mt-1.5 text-xs text-white/50 max-w-[80%] truncate text-center font-medium">
+              {trackTitle}
+            </p>
+          )}
         </div>
       )}
     </div>

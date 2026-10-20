@@ -10,4 +10,6 @@ export interface UserSession {
   userId: string;
   displayName: string;
   avatarColor: string;
+  email?: string;
+  photoUrl?: string;
 }

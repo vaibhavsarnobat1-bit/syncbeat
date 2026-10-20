@@ -11,6 +11,7 @@ import {
   QrCode, Smartphone, Download, Check, Copy, ExternalLink, Sparkles
 } from 'lucide-react';
 import { shareOrCopy } from '@/lib/utils';
+import { BrandMark } from '@/components/BrandMark';
 
 interface AppDownloadModalProps {
   open: boolean;
@@ -61,8 +62,10 @@ export function AppDownloadModal({ open, onOpenChange }: AppDownloadModalProps) 
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="max-w-md bg-[#080d1a] border border-cyan-500/20 text-white p-6 rounded-2xl shadow-2xl">
         <DialogHeader className="text-center">
-          <div className="mx-auto w-12 h-12 rounded-2xl bg-gradient-to-tr from-cyan-500 to-indigo-600 p-[2px] mb-3 shadow-lg shadow-cyan-500/25">
-            <img src="/logo.png" alt="Logo" className="w-full h-full rounded-[14px] object-cover" />
+          <div className="mx-auto w-12 h-12 rounded-2xl bg-gradient-to-tr from-cyan-500 to-indigo-600 p-[2px] mb-3 shadow-lg shadow-cyan-500/25 flex items-center justify-center">
+            <div className="w-full h-full rounded-[14px] bg-[#070d1c] flex items-center justify-center">
+              <BrandMark size={40} title="SyncBeat logo" />
+            </div>
           </div>
           <DialogTitle className="text-xl font-extrabold text-white flex items-center justify-center gap-2">
             <span>Download SyncBeat</span>

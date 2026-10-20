@@ -9,6 +9,7 @@
 export * from "./anonymousLoginRequest";
 export * from "./createRoomRequest";
 export * from "./errorResponse";
+export * from "./googleLoginRequest";
 export * from "./healthStatus";
 export * from "./room";
 export * from "./track";

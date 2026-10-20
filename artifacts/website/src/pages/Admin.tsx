@@ -4,11 +4,13 @@ import { motion, AnimatePresence } from 'framer-motion';
 import {
   LayoutDashboard, Users, Radio, Trash2,
   RefreshCw, LogOut, Shield, Music2, TrendingUp, Activity,
-  ChevronRight, Search, AlertTriangle, Headphones, Server,
-  Cpu, HardDrive, Globe, Wifi, Clock, Zap, Eye, EyeOff,
-  BarChart2, ArrowUp, ArrowDown
+  ChevronRight, Search, AlertTriangle, Server,
+  Globe, Wifi, Clock, Zap, Eye, EyeOff,
+  BarChart2, ArrowUp, ArrowDown, MessageSquare, Download,
+  ChevronDown, Play, Pause, Crown, Gauge
 } from 'lucide-react';
 import { format } from 'date-fns';
+import { BrandMark } from '@/components/BrandMark';
 
 const BASE = import.meta.env.BASE_URL.replace(/\/$/, '');
 const ADMIN_SECRET = 'Vaibhav@2004';
@@ -20,15 +22,25 @@ function apiFetch(path: string, opts?: RequestInit) {
   });
 }
 
+type Track = { videoId: string; title: string; thumbnail?: string; duration?: number };
 type Stats = { totalRooms: number; activeRooms: number; totalUsers: number; totalMessages: number };
-type Room = { id: string; name: string; inviteCode: string; memberCount: number; messageCount: number; isPlaying: boolean; currentTrack: any; createdAt: number; members: any[] };
+type Room = {
+  id: string; name: string; inviteCode: string; memberCount: number; messageCount: number;
+  isPlaying: boolean; currentTrack: Track | null; createdAt: number; members: User[];
+  hostUserId?: string; queue?: Track[]; history?: Track[];
+};
 type User = { userId: string; displayName: string; avatarColor: string; joinedAt: number };
+type Msg = {
+  id: string; userId: string; displayName: string; avatarColor?: string; text: string;
+  timestamp: number; isSystem?: boolean; roomName: string; inviteCode: string;
+};
 type ActivityEvent = { id: string; type: 'room_created' | 'room_deleted' | 'user_joined' | 'user_left' | 'track_played'; message: string; timestamp: number };
 
 const TABS = [
   { id: 'dashboard', label: 'Dashboard', icon: LayoutDashboard },
   { id: 'rooms', label: 'Rooms', icon: Radio },
   { id: 'users', label: 'Users', icon: Users },
+  { id: 'messages', label: 'Live Messages', icon: MessageSquare },
   { id: 'server', label: 'Server Info', icon: Server },
   { id: 'activity', label: 'Activity Log', icon: Activity },
 ];
@@ -68,22 +80,33 @@ export default function Admin() {
   const [loading, setLoading] = useState(false);
   const [search, setSearch] = useState('');
   const [deleteConfirm, setDeleteConfirm] = useState<string | null>(null);
-  const [uptime] = useState(Math.floor(Math.random() * 86400 * 3 + 3600));
-  const [serverLoad] = useState({ cpu: Math.floor(Math.random() * 30 + 5), mem: Math.floor(Math.random() * 40 + 20), net: Math.floor(Math.random() * 200 + 50) });
+  const [messages, setMessages] = useState<Msg[]>([]);
+  const [msgRoom, setMsgRoom] = useState('all');
+  const [showSystem, setShowSystem] = useState(true);
+  const [openRoom, setOpenRoom] = useState<string | null>(null);
+  const [autoRefresh, setAutoRefresh] = useState(true);
+  const [lastSync, setLastSync] = useState<number | null>(null);
+  const [pings, setPings] = useState<number[]>([]);
+  const [sessionStart] = useState(() => Date.now());
   const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
   const loadAll = useCallback(async () => {
     if (!isAuthed) return;
     setLoading(true);
+    const t0 = performance.now();
     try {
-      const [s, r, u] = await Promise.all([
+      const [s, r, u, m] = await Promise.all([
         apiFetch('/stats').then(r => r.json()),
         apiFetch('/rooms').then(r => r.json()),
         apiFetch('/users').then(r => r.json()),
+        apiFetch('/messages?limit=500').then(r => r.json()),
       ]);
       setStats(s);
       setRooms(r.rooms || []);
       setUsers(u.users || []);
+      setMessages(m.messages || []);
+      setPings(prev => [...prev, Math.round(performance.now() - t0)].slice(-24));
+      setLastSync(Date.now());
     } catch {}
     setLoading(false);
   }, [isAuthed]);
@@ -92,10 +115,10 @@ export default function Admin() {
 
   // Auto-refresh every 30s
   useEffect(() => {
-    if (!isAuthed) return;
+    if (!isAuthed || !autoRefresh) return;
     intervalRef.current = setInterval(loadAll, 30000);
     return () => { if (intervalRef.current) clearInterval(intervalRef.current); };
-  }, [isAuthed, loadAll]);
+  }, [isAuthed, autoRefresh, loadAll]);
 
   const handleLogin = (e: React.FormEvent) => {
     e.preventDefault();
@@ -116,13 +139,39 @@ export default function Admin() {
   const filteredUsers = users.filter(u =>
     u.displayName.toLowerCase().includes(search.toLowerCase())
   );
+  const filteredMessages = messages.filter(m => {
+    if (!showSystem && m.isSystem) return false;
+    if (msgRoom !== 'all' && m.inviteCode !== msgRoom) return false;
+    const q = search.trim().toLowerCase();
+    if (!q) return true;
+    return m.text.toLowerCase().includes(q)
+      || m.displayName.toLowerCase().includes(q)
+      || m.roomName.toLowerCase().includes(q);
+  });
 
   const activity = buildActivity(rooms, users);
-  const uptimeStr = (() => {
-    const h = Math.floor(uptime / 3600);
-    const m = Math.floor((uptime % 3600) / 60);
-    return `${h}h ${m}m`;
+  const avgPing = pings.length ? Math.round(pings.reduce((a, b) => a + b, 0) / pings.length) : 0;
+  const liveTracks = rooms.filter(r => r.isPlaying && r.currentTrack);
+  const sessionStr = (() => {
+    const secs = Math.max(0, Math.floor((Date.now() - sessionStart) / 1000));
+    const h = Math.floor(secs / 3600);
+    const m = Math.floor((secs % 3600) / 60);
+    const s = secs % 60;
+    return h ? `${h}h ${m}m` : m ? `${m}m ${s}s` : `${s}s`;
   })();
+
+  const exportSnapshot = () => {
+    const blob = new Blob(
+      [JSON.stringify({ exportedAt: new Date().toISOString(), stats, rooms, users, messages }, null, 2)],
+      { type: 'application/json' },
+    );
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `syncbeat-admin-${format(new Date(), 'yyyy-MM-dd-HH-mm')}.json`;
+    a.click();
+    URL.revokeObjectURL(url);
+  };
 
   // ── Login screen ──
   if (!isAuthed) {
@@ -187,8 +236,8 @@ export default function Admin() {
       <aside className="w-56 shrink-0 border-r border-white/6 flex flex-col bg-black/30 backdrop-blur-xl">
         <div className="p-5 border-b border-white/6">
           <div className="flex items-center gap-2.5">
-            <div className="w-9 h-9 rounded-xl bg-gradient-to-tr from-primary to-accent flex items-center justify-center">
-              <Headphones className="w-5 h-5 text-white" />
+            <div className="w-9 h-9 rounded-xl bg-[#070d1c] ring-1 ring-white/10 flex items-center justify-center">
+              <BrandMark size={30} title="SyncBeat logo" />
             </div>
             <div>
               <p className="font-black text-sm">SyncBeat</p>
@@ -198,37 +247,66 @@ export default function Admin() {
         </div>
 
         <nav className="flex-1 p-3 space-y-1">
-          {TABS.map(t => (
-            <button
-              key={t.id}
-              onClick={() => { setTab(t.id); setSearch(''); }}
-              className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-semibold transition-all ${
-                tab === t.id
-                  ? 'bg-primary/20 text-primary border border-primary/20'
-                  : 'text-white/40 hover:text-white hover:bg-white/5'
-              }`}
-            >
-              <t.icon className="w-4 h-4 shrink-0" />
-              {t.label}
-              {t.id === 'rooms' && rooms.length > 0 && (
-                <span className="ml-auto text-[10px] bg-white/10 px-1.5 py-0.5 rounded-full">{rooms.length}</span>
-              )}
-              {t.id === 'users' && users.length > 0 && (
-                <span className="ml-auto text-[10px] bg-white/10 px-1.5 py-0.5 rounded-full">{users.length}</span>
-              )}
-              {t.id === 'activity' && activity.length > 0 && (
-                <span className="ml-auto text-[10px] bg-primary/20 text-primary px-1.5 py-0.5 rounded-full">{activity.length}</span>
-              )}
-            </button>
-          ))}
+          {TABS.map(t => {
+            const active = tab === t.id;
+            const count = t.id === 'rooms' ? rooms.length
+              : t.id === 'users' ? users.length
+              : t.id === 'messages' ? messages.length
+              : t.id === 'activity' ? activity.length
+              : 0;
+            return (
+              <button
+                key={t.id}
+                onClick={() => { setTab(t.id); setSearch(''); }}
+                className={`relative w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-semibold transition-all overflow-hidden border ${
+                  active ? 'text-white' : 'text-white/40 hover:text-white hover:bg-white/5 border-transparent'
+                }`}
+                style={active ? {
+                  borderColor: 'rgba(0,212,212,0.28)',
+                  background: 'linear-gradient(100deg, rgba(124,58,237,0.28), rgba(0,212,212,0.13))',
+                  boxShadow: '0 10px 26px rgba(0,0,0,0.4), inset 0 1px 0 rgba(255,255,255,0.08)',
+                } : undefined}
+              >
+                {active && (
+                  <span className="absolute left-0 top-0 bottom-0 w-[3px] bg-gradient-to-b from-cyan-300 to-violet-500" aria-hidden="true" />
+                )}
+                <t.icon className={`w-4 h-4 shrink-0 ${active ? 'text-cyan-300' : ''}`} />
+                {t.label}
+                {count > 0 && (
+                  <span className={`ml-auto text-[10px] px-1.5 py-0.5 rounded-full font-bold ${
+                    active ? 'bg-cyan-400/20 text-cyan-200' : 'bg-white/10 text-white/40'
+                  }`}>{count}</span>
+                )}
+              </button>
+            );
+          })}
         </nav>
 
-        {/* Auto-refresh indicator */}
-        <div className="px-4 py-2">
-          <div className="flex items-center gap-2 text-[10px] text-white/20">
-            <div className="w-1.5 h-1.5 bg-green-400 rounded-full animate-pulse" />
-            Auto-refresh: 30s
-          </div>
+        {/* Live sync + export */}
+        <div className="px-3 pb-1 space-y-1">
+          <button
+            onClick={() => setAutoRefresh(v => !v)}
+            className="w-full flex items-center gap-2 px-3 py-2 rounded-xl text-[11px] font-semibold border transition-all"
+            style={{
+              borderColor: autoRefresh ? 'rgba(16,185,129,0.28)' : 'rgba(255,255,255,0.08)',
+              background: autoRefresh ? 'rgba(16,185,129,0.08)' : 'rgba(255,255,255,0.02)',
+              color: autoRefresh ? '#6ee7b7' : 'rgba(255,255,255,0.35)',
+            }}
+            title="Toggle 30s auto-refresh"
+          >
+            <span className={`w-1.5 h-1.5 rounded-full ${autoRefresh ? 'bg-green-400 animate-pulse' : 'bg-white/25'}`} />
+            {autoRefresh ? 'Live · every 30s' : 'Live paused'}
+            {lastSync && (
+              <span className="ml-auto font-mono text-[10px] opacity-70">{format(new Date(lastSync), 'HH:mm:ss')}</span>
+            )}
+          </button>
+          <button
+            onClick={exportSnapshot}
+            className="w-full flex items-center gap-2 px-3 py-2 rounded-xl text-[11px] font-semibold text-white/35 hover:text-white hover:bg-white/5 transition-all"
+          >
+            <Download className="w-3.5 h-3.5" /> Export snapshot
+            <span className="ml-auto font-mono text-[10px] opacity-60">JSON</span>
+          </button>
         </div>
 
         <div className="p-3 border-t border-white/6 space-y-1">
@@ -263,10 +341,10 @@ export default function Admin() {
               {/* Stat cards */}
               <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 mb-8">
                 {[
-                  { label: 'Total Rooms', value: stats?.totalRooms ?? 0, icon: Radio, color: '#7c3aed', bg: 'from-violet-600/15 to-transparent', trend: '+2' },
-                  { label: 'Active Rooms', value: stats?.activeRooms ?? 0, icon: Activity, color: '#10b981', bg: 'from-emerald-600/15 to-transparent', trend: 'live' },
-                  { label: 'Online Users', value: stats?.totalUsers ?? 0, icon: Users, color: '#db2777', bg: 'from-pink-600/15 to-transparent', trend: '+5' },
-                  { label: 'Messages Sent', value: stats?.totalMessages ?? 0, icon: TrendingUp, color: '#f59e0b', bg: 'from-amber-600/15 to-transparent', trend: 'total' },
+                  { label: 'Total Rooms', value: stats?.totalRooms ?? 0, icon: Radio, color: '#7c3aed', bg: 'from-violet-600/15 to-transparent', note: `${(stats?.totalRooms ?? 0) - (stats?.activeRooms ?? 0)} idle` },
+                  { label: 'Active Rooms', value: stats?.activeRooms ?? 0, icon: Activity, color: '#10b981', bg: 'from-emerald-600/15 to-transparent', note: `${liveTracks.length} playing` },
+                  { label: 'Online Users', value: stats?.totalUsers ?? 0, icon: Users, color: '#db2777', bg: 'from-pink-600/15 to-transparent', note: `${stats && stats.activeRooms ? (stats.totalUsers / stats.activeRooms).toFixed(1) : '0'} per room` },
+                  { label: 'Messages Sent', value: stats?.totalMessages ?? 0, icon: TrendingUp, color: '#f59e0b', bg: 'from-amber-600/15 to-transparent', note: `${stats && stats.totalUsers ? Math.round(stats.totalMessages / stats.totalUsers) : 0} per user` },
                 ].map((stat, i) => (
                   <motion.div
                     key={stat.label}
@@ -280,29 +358,40 @@ export default function Admin() {
                     </div>
                     <p className="text-3xl font-black mb-1">{stat.value.toLocaleString()}</p>
                     <p className="text-xs text-white/40 font-medium">{stat.label}</p>
-                    <span className="text-[10px] mt-2 inline-block px-2 py-0.5 rounded-full bg-white/5 text-white/30">{stat.trend}</span>
+                    <span className="text-[10px] mt-2 inline-block px-2 py-0.5 rounded-full bg-white/5 text-white/30">{stat.note}</span>
                   </motion.div>
                 ))}
               </div>
 
-              {/* Quick server status bar */}
+              {/* Real API health strip */}
               <div className="rounded-2xl border border-white/8 p-4 mb-6 grid grid-cols-3 gap-4 bg-white/[0.02]">
                 <div className="flex items-center gap-3">
                   <div className="w-9 h-9 rounded-xl bg-emerald-500/10 flex items-center justify-center">
-                    <Cpu className="w-4 h-4 text-emerald-400" />
+                    <Gauge className="w-4 h-4 text-emerald-400" />
                   </div>
-                  <div>
-                    <p className="text-xs text-white/30">CPU</p>
-                    <p className="font-bold text-sm">{serverLoad.cpu}%</p>
+                  <div className="min-w-0">
+                    <p className="text-xs text-white/30">API round-trip</p>
+                    <p className="font-bold text-sm">
+                      {avgPing ? `${avgPing} ms` : '—'}
+                      <span className="ml-2 inline-flex items-end gap-[2px] align-middle">
+                        {pings.slice(-12).map((p, i) => (
+                          <span
+                            key={i}
+                            className="w-[3px] rounded-sm bg-emerald-400/70"
+                            style={{ height: `${Math.max(3, Math.min(16, p / 12))}px` }}
+                          />
+                        ))}
+                      </span>
+                    </p>
                   </div>
                 </div>
                 <div className="flex items-center gap-3">
                   <div className="w-9 h-9 rounded-xl bg-violet-500/10 flex items-center justify-center">
-                    <HardDrive className="w-4 h-4 text-violet-400" />
+                    <Music2 className="w-4 h-4 text-violet-400" />
                   </div>
                   <div>
-                    <p className="text-xs text-white/30">Memory</p>
-                    <p className="font-bold text-sm">{serverLoad.mem}%</p>
+                    <p className="text-xs text-white/30">Tracks live</p>
+                    <p className="font-bold text-sm">{liveTracks.length}</p>
                   </div>
                 </div>
                 <div className="flex items-center gap-3">
@@ -310,11 +399,36 @@ export default function Admin() {
                     <Clock className="w-4 h-4 text-cyan-400" />
                   </div>
                   <div>
-                    <p className="text-xs text-white/30">Uptime</p>
-                    <p className="font-bold text-sm">{uptimeStr}</p>
+                    <p className="text-xs text-white/30">Panel session</p>
+                    <p className="font-bold text-sm">{sessionStr}</p>
                   </div>
                 </div>
               </div>
+
+              {/* Live now-playing ticker */}
+              {liveTracks.length > 0 && (
+                <div className="rounded-2xl border border-white/8 overflow-hidden mb-6">
+                  <div className="px-5 py-3 border-b border-white/6 flex items-center gap-2">
+                    <span className="w-1.5 h-1.5 rounded-full bg-red-400 animate-pulse" />
+                    <h2 className="font-bold text-sm">On Air Right Now</h2>
+                  </div>
+                  <div className="flex gap-3 overflow-x-auto p-4">
+                    {liveTracks.map(room => (
+                      <div
+                        key={room.inviteCode}
+                        className="flex items-center gap-3 pr-4 pl-1 py-1 rounded-xl bg-white/[0.03] border border-white/8 shrink-0"
+                      >
+                        <img src={room.currentTrack?.thumbnail} alt="" className="w-9 h-9 rounded-lg object-cover" />
+                        <div className="max-w-[190px]">
+                          <p className="text-[11px] font-semibold truncate">{room.currentTrack?.title}</p>
+                          <p className="text-[10px] text-white/30 truncate">{room.name} · {room.memberCount} listening</p>
+                        </div>
+                        <Play className="w-3 h-3 text-emerald-400 shrink-0" />
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
 
               {/* Recent rooms */}
               <div className="rounded-2xl border border-white/8 overflow-hidden">
@@ -374,22 +488,26 @@ export default function Admin() {
               <div className="space-y-3">
                 {filteredRooms.length === 0 ? (
                   <div className="text-center py-16 text-white/25 text-sm">No rooms found</div>
-                ) : filteredRooms.map((room, i) => (
+                ) : filteredRooms.map((room, i) => {
+                  const isOpen = openRoom === room.inviteCode;
+                  const queue = room.queue || [];
+                  const history = room.history || [];
+                  return (
                   <motion.div
                     key={room.inviteCode}
                     initial={{ opacity: 0, y: 8 }}
                     animate={{ opacity: 1, y: 0 }}
                     transition={{ delay: i * 0.04 }}
-                    className="rounded-2xl border border-white/8 p-4 hover:border-white/12 transition-all bg-white/[0.02]"
+                    className={`rounded-2xl border p-4 transition-all bg-white/[0.02] ${isOpen ? 'border-cyan-400/25 bg-cyan-500/[0.03]' : 'border-white/8 hover:border-white/12'}`}
                   >
                     <div className="flex items-start justify-between gap-4">
-                      <div className="flex-1 min-w-0">
+                      <button onClick={() => setOpenRoom(isOpen ? null : room.inviteCode)} className="flex-1 min-w-0 text-left cursor-pointer">
                         <div className="flex items-center gap-2 mb-1">
                           <div className={`w-2 h-2 rounded-full shrink-0 ${room.memberCount > 0 ? 'bg-green-400' : 'bg-white/15'}`} />
                           <h3 className="font-bold truncate">{room.name}</h3>
                           {room.isPlaying && (
-                            <span className="text-[10px] bg-primary/20 text-primary border border-primary/20 px-2 py-0.5 rounded-full font-semibold shrink-0">
-                              ▶ Playing
+                            <span className="text-[10px] bg-primary/20 text-primary border border-primary/20 px-2 py-0.5 rounded-full font-semibold shrink-0 flex items-center gap-1">
+                              <Play className="w-2.5 h-2.5" /> Playing
                             </span>
                           )}
                         </div>
@@ -397,6 +515,7 @@ export default function Admin() {
                           <span>Code: <span className="font-mono text-white/50">{room.inviteCode}</span></span>
                           <span>{room.memberCount} members</span>
                           <span>{room.messageCount} messages</span>
+                          <span>{queue.length} queued</span>
                           <span>Created {new Date(room.createdAt).toLocaleDateString()}</span>
                         </div>
                         {room.currentTrack && (
@@ -407,7 +526,7 @@ export default function Admin() {
                         )}
                         {room.members.length > 0 && (
                           <div className="mt-2 flex -space-x-1.5">
-                            {room.members.slice(0, 8).map((m: any) => (
+                            {room.members.slice(0, 8).map((m) => (
                               <div
                                 key={m.userId}
                                 title={m.displayName}
@@ -419,18 +538,106 @@ export default function Admin() {
                             ))}
                           </div>
                         )}
-                      </div>
-
-                      <button
-                        onClick={() => setDeleteConfirm(room.inviteCode)}
-                        className="p-2 rounded-xl text-white/25 hover:text-red-400 hover:bg-red-500/10 transition-all shrink-0"
-                        title="Delete room"
-                      >
-                        <Trash2 className="w-4 h-4" />
                       </button>
+
+                      <div className="flex items-center gap-1 shrink-0">
+                        <button
+                          onClick={() => setOpenRoom(isOpen ? null : room.inviteCode)}
+                          className="p-2 rounded-xl text-white/25 hover:text-cyan-300 hover:bg-cyan-500/10 transition-all"
+                          title={isOpen ? 'Hide room details' : 'Inspect room'}
+                        >
+                          <ChevronDown className={`w-4 h-4 transition-transform ${isOpen ? 'rotate-180 text-cyan-300' : ''}`} />
+                        </button>
+                        <button
+                          onClick={() => setDeleteConfirm(room.inviteCode)}
+                          className="p-2 rounded-xl text-white/25 hover:text-red-400 hover:bg-red-500/10 transition-all"
+                          title="Delete room"
+                        >
+                          <Trash2 className="w-4 h-4" />
+                        </button>
+                      </div>
                     </div>
+
+                    <AnimatePresence initial={false}>
+                      {isOpen && (
+                        <motion.div
+                          initial={{ height: 0, opacity: 0 }}
+                          animate={{ height: 'auto', opacity: 1 }}
+                          exit={{ height: 0, opacity: 0 }}
+                          transition={{ duration: 0.25, ease: 'easeOut' }}
+                          className="overflow-hidden"
+                        >
+                          <div className="mt-4 pt-4 border-t border-white/6 grid grid-cols-1 lg:grid-cols-3 gap-5">
+                            {/* Who is inside */}
+                            <div>
+                              <p className="text-[10px] font-bold uppercase tracking-wider text-white/30 mb-2.5">
+                                In the room ({room.members.length})
+                              </p>
+                              {room.members.length === 0 ? (
+                                <p className="text-xs text-white/20">Nobody listening right now</p>
+                              ) : (
+                                <div className="space-y-1.5">
+                                  {room.members.map(m => (
+                                    <div key={m.userId} className="flex items-center gap-2.5">
+                                      <div className="w-6 h-6 rounded-lg flex items-center justify-center text-[10px] font-bold text-white shrink-0" style={{ backgroundColor: m.avatarColor }}>
+                                        {m.displayName.charAt(0).toUpperCase()}
+                                      </div>
+                                      <span className="text-xs truncate flex-1">{m.displayName}</span>
+                                      {room.hostUserId === m.userId && (
+                                        <Crown className="w-3 h-3 text-amber-400 shrink-0" />
+                                      )}
+                                      <span className="text-[10px] text-white/25 font-mono shrink-0">
+                                        {format(new Date(m.joinedAt), 'HH:mm')}
+                                      </span>
+                                    </div>
+                                  ))}
+                                </div>
+                              )}
+                            </div>
+
+                            {/* Queue */}
+                            <div className="min-w-0">
+                              <p className="text-[10px] font-bold uppercase tracking-wider text-white/30 mb-2.5">
+                                Up next ({queue.length})
+                              </p>
+                              {queue.length === 0 ? (
+                                <p className="text-xs text-white/20">Queue is empty</p>
+                              ) : (
+                                <div className="space-y-1.5 max-h-[168px] overflow-y-auto pr-1">
+                                  {queue.map((t, qi) => (
+                                    <div key={`${t.videoId}-${qi}`} className="flex items-center gap-2">
+                                      <img src={t.thumbnail} alt="" className="w-7 h-7 rounded object-cover shrink-0" />
+                                      <span className="text-[11px] text-white/55 truncate">{t.title}</span>
+                                    </div>
+                                  ))}
+                                </div>
+                              )}
+                            </div>
+
+                            {/* History */}
+                            <div className="min-w-0">
+                              <p className="text-[10px] font-bold uppercase tracking-wider text-white/30 mb-2.5">
+                                Recently played ({history.length})
+                              </p>
+                              {history.length === 0 ? (
+                                <p className="text-xs text-white/20">Nothing played yet</p>
+                              ) : (
+                                <div className="space-y-1.5 max-h-[168px] overflow-y-auto pr-1">
+                                  {history.slice(0, 8).map((t, hi) => (
+                                    <div key={`${t.videoId}-${hi}`} className="flex items-center gap-2">
+                                      <Pause className="w-3 h-3 text-white/20 shrink-0" />
+                                      <span className="text-[11px] text-white/40 truncate">{t.title}</span>
+                                    </div>
+                                  ))}
+                                </div>
+                              )}
+                            </div>
+                          </div>
+                        </motion.div>
+                      )}
+                    </AnimatePresence>
                   </motion.div>
-                ))}
+                );})}
               </div>
             </motion.div>
           )}
@@ -486,6 +693,107 @@ export default function Admin() {
             </motion.div>
           )}
 
+          {/* ── LIVE MESSAGES ── */}
+          {tab === 'messages' && (
+            <motion.div initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }} key="messages">
+              <div className="flex flex-wrap items-center justify-between gap-3 mb-5">
+                <div>
+                  <h1 className="text-2xl font-black">Live Messages</h1>
+                  <p className="text-white/40 text-sm mt-1">
+                    {filteredMessages.length} of {messages.length} chat messages across all rooms
+                  </p>
+                </div>
+                <div className="flex items-center gap-2">
+                  <button
+                    onClick={() => setShowSystem(v => !v)}
+                    className="flex items-center gap-1.5 px-3 py-2 rounded-xl text-[11px] font-semibold border transition-all"
+                    style={{
+                      borderColor: showSystem ? 'rgba(0,212,212,0.25)' : 'rgba(255,255,255,0.08)',
+                      background: showSystem ? 'rgba(0,212,212,0.08)' : 'rgba(255,255,255,0.02)',
+                      color: showSystem ? '#67e8f9' : 'rgba(255,255,255,0.35)',
+                    }}
+                  >
+                    <Radio className="w-3 h-3" /> System messages
+                  </button>
+                  <div className="relative">
+                    <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-white/30" />
+                    <input
+                      type="text"
+                      placeholder="Search chat..."
+                      value={search}
+                      onChange={e => setSearch(e.target.value)}
+                      className="bg-white/5 border border-white/10 rounded-xl pl-9 pr-4 py-2 text-sm outline-none focus:border-primary/40 w-48 transition-all placeholder:text-white/20"
+                    />
+                  </div>
+                </div>
+              </div>
+
+              {/* Room filter */}
+              <div className="flex flex-wrap gap-2 mb-5">
+                <button
+                  onClick={() => setMsgRoom('all')}
+                  className={`text-[11px] px-3 py-1.5 rounded-full border font-semibold transition-all ${
+                    msgRoom === 'all'
+                      ? 'bg-cyan-500/15 border-cyan-400/35 text-cyan-200'
+                      : 'bg-white/[0.02] border-white/8 text-white/35 hover:text-white'
+                  }`}
+                >
+                  All rooms
+                </button>
+                {rooms.filter(r => r.messageCount > 0).map(r => (
+                  <button
+                    key={r.inviteCode}
+                    onClick={() => setMsgRoom(msgRoom === r.inviteCode ? 'all' : r.inviteCode)}
+                    className={`text-[11px] px-3 py-1.5 rounded-full border font-semibold transition-all flex items-center gap-1.5 ${
+                      msgRoom === r.inviteCode
+                        ? 'bg-cyan-500/15 border-cyan-400/35 text-cyan-200'
+                        : 'bg-white/[0.02] border-white/8 text-white/35 hover:text-white'
+                    }`}
+                  >
+                    <span className="truncate max-w-[130px]">{r.name}</span>
+                    <span className="opacity-60">{r.messageCount}</span>
+                  </button>
+                ))}
+              </div>
+
+              {filteredMessages.length === 0 ? (
+                <div className="text-center py-20 text-white/25 text-sm">
+                  <MessageSquare className="w-10 h-10 mx-auto mb-3 opacity-20" />
+                  No messages match this filter
+                </div>
+              ) : (
+                <div className="rounded-2xl border border-white/8 overflow-hidden divide-y divide-white/5">
+                  {filteredMessages.slice(0, 250).map(m => (
+                    <div key={m.id} className="px-4 py-3 flex items-start gap-3 hover:bg-white/[0.03] transition-colors">
+                      {m.isSystem ? (
+                        <div className="w-7 h-7 rounded-lg bg-white/[0.06] border border-white/10 flex items-center justify-center shrink-0 mt-0.5">
+                          <Radio className="w-3.5 h-3.5 text-white/35" />
+                        </div>
+                      ) : (
+                        <div
+                          className="w-7 h-7 rounded-lg flex items-center justify-center text-[10px] font-bold text-white shrink-0 mt-0.5"
+                          style={{ backgroundColor: m.avatarColor || '#0891b2' }}
+                        >
+                          {m.displayName?.charAt(0).toUpperCase() || '?'}
+                        </div>
+                      )}
+                      <div className="flex-1 min-w-0">
+                        <div className="flex items-center gap-2 flex-wrap">
+                          <span className="text-xs font-semibold text-white/80">{m.isSystem ? 'system' : m.displayName}</span>
+                          <span className="text-[10px] px-1.5 py-0.5 rounded bg-white/5 text-white/35 truncate max-w-[150px]">
+                            {m.roomName}
+                          </span>
+                          <span className="text-[10px] text-white/20 font-mono">{format(new Date(m.timestamp), 'HH:mm:ss')}</span>
+                        </div>
+                        <p className={`text-sm mt-0.5 break-words ${m.isSystem ? 'text-white/30 italic' : 'text-white/65'}`}>{m.text}</p>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </motion.div>
+          )}
+
           {/* ── SERVER INFO ── */}
           {tab === 'server' && (
             <motion.div initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }} key="server">
@@ -500,13 +808,15 @@ export default function Admin() {
                   <div className="flex items-center gap-2 mb-5">
                     <Zap className="w-4 h-4 text-emerald-400" />
                     <h2 className="font-bold text-sm">Health Status</h2>
-                    <span className="ml-auto text-[10px] bg-emerald-500/15 text-emerald-400 border border-emerald-500/20 px-2 py-0.5 rounded-full font-semibold">● Healthy</span>
+                    <span className="ml-auto text-[10px] bg-emerald-500/15 text-emerald-400 border border-emerald-500/20 px-2 py-0.5 rounded-full font-semibold">
+                      ● {avgPing ? `${avgPing} ms` : 'measuring…'}
+                    </span>
                   </div>
                   <div className="space-y-4">
                     {[
-                      { label: 'CPU Usage', value: serverLoad.cpu, color: '#10b981', max: 100, unit: '%' },
-                      { label: 'Memory', value: serverLoad.mem, color: '#7c3aed', max: 100, unit: '%' },
-                      { label: 'Network I/O', value: serverLoad.net, color: '#0ea5e9', max: 500, unit: ' KB/s' },
+                      { label: 'API round-trip', value: avgPing, color: '#10b981', max: 300, unit: ' ms' },
+                      { label: 'Room occupancy', value: stats && stats.totalRooms ? Math.round((stats.activeRooms / stats.totalRooms) * 100) : 0, color: '#7c3aed', max: 100, unit: '%' },
+                      { label: 'Chat buffer used', value: messages.length, color: '#0ea5e9', max: 500, unit: ' msgs' },
                     ].map(m => (
                       <div key={m.label}>
                         <div className="flex justify-between text-xs mb-1.5">
@@ -516,7 +826,7 @@ export default function Admin() {
                         <div className="h-1.5 rounded-full bg-white/5 overflow-hidden">
                           <motion.div
                             initial={{ width: 0 }}
-                            animate={{ width: `${(m.value / m.max) * 100}%` }}
+                            animate={{ width: `${Math.min(100, (m.value / m.max) * 100)}%` }}
                             transition={{ duration: 0.8, ease: 'easeOut' }}
                             className="h-full rounded-full"
                             style={{ backgroundColor: m.color }}
@@ -525,6 +835,24 @@ export default function Admin() {
                       </div>
                     ))}
                   </div>
+                  {pings.length > 1 && (
+                    <div className="mt-5 pt-4 border-t border-white/6">
+                      <p className="text-[10px] text-white/30 mb-2 flex items-center justify-between">
+                        <span>Last {pings.length} sync calls</span>
+                        <span className="font-mono">min {Math.min(...pings)} ms · max {Math.max(...pings)} ms</span>
+                      </p>
+                      <div className="flex items-end gap-1 h-10">
+                        {pings.map((p, i) => (
+                          <div
+                            key={i}
+                            className="flex-1 rounded-sm bg-gradient-to-t from-emerald-500/40 to-emerald-400"
+                            style={{ height: `${Math.max(8, Math.min(100, (p / 300) * 100))}%` }}
+                            title={`${p} ms`}
+                          />
+                        ))}
+                      </div>
+                    </div>
+                  )}
                 </div>
 
                 {/* Runtime Info */}
@@ -536,10 +864,10 @@ export default function Admin() {
                   <div className="space-y-3">
                     {[
                       { label: 'Environment', value: 'Node.js / Express', icon: Server },
-                      { label: 'Uptime', value: uptimeStr, icon: Clock },
-                      { label: 'API Version', value: 'v1.0.0', icon: BarChart2 },
-                      { label: 'WebSocket', value: 'Socket.IO Active', icon: Wifi },
-                      { label: 'Transport', value: 'In-Memory Store', icon: HardDrive },
+                      { label: 'Panel session', value: sessionStr, icon: Clock },
+                      { label: 'Last sync', value: lastSync ? format(new Date(lastSync), 'HH:mm:ss') : '—', icon: RefreshCw },
+                      { label: 'Realtime', value: 'WebSocket · /api/ws', icon: Wifi },
+                      { label: 'Transport', value: 'In-Memory Store', icon: BarChart2 },
                       { label: 'Admin', value: 'Vaibhav', icon: Shield },
                     ].map(row => (
                       <div key={row.label} className="flex items-center gap-3 py-2 border-b border-white/4 last:border-0">

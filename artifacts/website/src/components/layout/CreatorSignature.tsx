@@ -19,7 +19,7 @@ export function LinkedInIcon({ className = "w-4 h-4" }: { className?: string }) 
 
 interface CreatorSignatureProps {
   className?: string;
-  variant?: 'full' | 'compact';
+  variant?: 'full' | 'compact' | 'mini';
 }
 
 export function CreatorSignature({ className = "", variant = 'full' }: CreatorSignatureProps) {
@@ -27,6 +27,17 @@ export function CreatorSignature({ className = "", variant = 'full' }: CreatorSi
   const WHATSAPP_LINK = "https://wa.me/917248949501?text=Hi%20Vaibhav!%20Connecting%20with%20you%20from%20SyncBeat.";
   const EMAIL = "vaibhavsarnobat1@gmail.com";
   const LINKEDIN_LINK = "https://www.linkedin.com/in/vaibhav-sarnobat-4704052aa?utm_source=share_via&utm_content=profile&utm_medium=member_android";
+
+  if (variant === 'mini') {
+    return (
+      <div className={`inline-flex items-center gap-2 px-3.5 py-1.5 rounded-full bg-white/[0.04] backdrop-blur-md border border-cyan-500/25 text-slate-300 text-xs shadow-sm hover:border-cyan-400/50 transition-all ${className}`}>
+        <Sparkles className="w-3.5 h-3.5 text-cyan-400" />
+        <span className="text-[11px] uppercase tracking-wider text-slate-400 font-medium">Made by</span>
+        <span className="font-bold text-xs bg-gradient-to-r from-cyan-300 to-sky-200 bg-clip-text text-transparent">Vaibhav</span>
+        <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 shadow-[0_0_8px_#34d399] animate-pulse" />
+      </div>
+    );
+  }
 
   return (
     <div className={`w-full flex flex-col items-center justify-center gap-6 ${className}`}>
