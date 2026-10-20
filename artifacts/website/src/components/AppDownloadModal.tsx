@@ -131,7 +131,7 @@ export function AppDownloadModal({ open, onOpenChange }: AppDownloadModalProps) 
             className="flex items-center justify-center gap-2 w-full py-2.5 px-4 rounded-xl bg-gradient-to-r from-cyan-500 to-blue-600 hover:from-cyan-400 hover:to-blue-500 text-white text-xs font-bold shadow-lg shadow-cyan-500/25 transition-all cursor-pointer"
           >
             <Download className="w-4 h-4" />
-            <span>Direct Download: SyncBeat.apk (677 KB)</span>
+            <span>Direct Download: SyncBeat.apk (3.1 MB)</span>
           </a>
         ) : null}
 

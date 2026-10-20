@@ -83,6 +83,7 @@ export function useWebSocket(roomId: string | undefined) {
   const { user } = useAuthStore();
   const wsRef = useRef<WebSocket | null>(null);
   const retryCountRef = useRef(0);
+  const pendingTrackRef = useRef<{ message: WsOutgoingMessage; at: number } | null>(null);
   const retryTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const unmountedRef = useRef(false);
 
@@ -121,6 +122,13 @@ export function useWebSocket(roomId: string | undefined) {
         setIsConnected(true);
         setWsError(null);
         retryCountRef.current = 0;
+        const pending = pendingTrackRef.current;
+        pendingTrackRef.current = null;
+        // A song picked during a reconnect is still what the user wants to hear —
+        // but only if they picked it moments ago, not minutes ago.
+        if (pending && Date.now() - pending.at < 12000) {
+          ws.send(JSON.stringify(pending.message));
+        }
       };
 
       ws.onclose = () => {
@@ -241,10 +249,13 @@ export function useWebSocket(roomId: string | undefined) {
     };
   }, [roomId, user]);
 
-  const send = useCallback((message: WsOutgoingMessage) => {
+  const send = useCallback((message: WsOutgoingMessage): boolean => {
     if (wsRef.current?.readyState === WebSocket.OPEN) {
       wsRef.current.send(JSON.stringify(message));
+      return true;
     }
+    if (message.type === 'track_change') pendingTrackRef.current = { message, at: Date.now() };
+    return false;
   }, []);
 
   return {

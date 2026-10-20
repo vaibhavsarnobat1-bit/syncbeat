@@ -203,6 +203,7 @@ export default function RoomPage() {
   const [showChat, setShowChat] = useState(true); // Mobile overlay toggle
   const [sidebarTab, setSidebarTab] = useState<'chat' | 'spotify'>('chat');
   const [trendingSongs, setTrendingSongs] = useState<SearchResult[]>([]);
+  const [syncNote, setSyncNote] = useState<string | null>(null);
   // 3D Reaction state
   const [active3DReactions, setActive3DReactions] = useState<Reaction3DItem[]>([]);
 
@@ -314,6 +315,9 @@ export default function RoomPage() {
 
   const activeRoom: Room = (room || initialRoom || fallbackRoom) as Room;
   const isHost = activeRoom?.hostUserId === user?.userId;
+  // Server closes the socket with this message when the room id no longer resolves,
+  // which is the one case where retrying sync is pointless instead of just slow.
+  const roomGone = !!wsError && /room not found/i.test(wsError);
 
   // Room palette drifts to match whatever is playing
   const moodHue = useMemo(() => moodHueFromTitle(activeRoom.currentTrack?.title), [activeRoom.currentTrack?.title]);
@@ -422,6 +426,10 @@ export default function RoomPage() {
       setLocation('/lobby');
     }
   }, [roomClosed]);
+
+  useEffect(() => {
+    if (isConnected) setSyncNote(null);
+  }, [isConnected]);
 
   // Fetch trending songs on mount
   useEffect(() => {
@@ -695,13 +703,19 @@ export default function RoomPage() {
         duration: result.duration,
       });
     } else {
-      send({
+      // ⚡ INSTANT LOCAL TRIGGER: don't wait for server roundtrip
+      try {
+        playerControlRef.current?.playVideo();
+        backgroundAudioManager.startKeepAlive();
+      } catch {}
+      const delivered = send({
         type: 'track_change',
         videoId: result.videoId,
         title: result.title,
         thumbnail: result.thumbnail,
         duration: result.duration,
       });
+      setSyncNote(delivered ? null : 'Song held until sync returns');
       setQuery('');
       setSearchResults([]);
       setShowResults(false);
@@ -1016,10 +1030,10 @@ export default function RoomPage() {
             </h1>
             <div className="flex items-center gap-2 text-[10px] text-white/35">
               <span
-                className={`w-1.5 h-1.5 rounded-full shrink-0 ${isConnected ? 'bg-green-400' : 'bg-yellow-500 animate-pulse'}`}
+                className={`w-1.5 h-1.5 rounded-full shrink-0 ${isConnected ? 'bg-green-400' : roomGone ? 'bg-red-500' : 'bg-yellow-500 animate-pulse'}`}
                 style={isConnected ? { boxShadow: '0 0 8px rgba(74,222,128,0.8)' } : undefined}
               />
-              <span>{isConnected ? 'Sync Active' : 'Reconnecting...'}</span>
+              <span>{roomGone ? 'Room Ended' : isConnected ? 'Sync Active' : syncNote || 'Reconnecting...'}</span>
             </div>
           </div>
         </div>
@@ -1354,6 +1368,31 @@ export default function RoomPage() {
                       <FloatingNotes isPlaying={activeRoom.isPlaying} />
                     </div>
                   </>
+                ) : roomGone ? (
+                  <div className="absolute inset-0 flex flex-col items-center justify-center text-center p-4 bg-gradient-to-br from-red-950/35 to-transparent">
+                    <div className="animate-float-3d mb-4" style={{ perspective: '800px' }}>
+                      <div className="relative">
+                        <div className="absolute -inset-2.5 rounded-full border border-red-400/30 animate-pulse-ring" />
+                        <VinylDisc size={80} labelColor="#f87171" />
+                      </div>
+                    </div>
+                    <p
+                      className="text-sm font-bold tracking-wide text-white/80"
+                      style={{ fontFamily: 'var(--app-font-display)' }}
+                    >
+                      This Room Has Ended
+                    </p>
+                    <p className="text-xs text-white/30 mt-1 mb-4">
+                      The server no longer knows invite {inviteCode}. Songs can&apos;t sync here anymore.
+                    </p>
+                    <button
+                      onClick={() => setLocation('/lobby')}
+                      className="flex items-center gap-2 px-5 py-2.5 rounded-full bg-white/8 hover:bg-cyan-500/25 hover:border-cyan-400/50 border border-white/12 text-white/85 text-xs font-bold uppercase tracking-[0.14em] transition-all active:scale-95"
+                    >
+                      <ArrowLeft className="w-3.5 h-3.5" />
+                      Start a New Room
+                    </button>
+                  </div>
                 ) : (
                   <div className="absolute inset-0 flex flex-col items-center justify-center text-center p-4 bg-gradient-to-br from-white/[0.02] to-transparent">
                     <div className="animate-float-3d mb-4" style={{ perspective: '800px' }}>

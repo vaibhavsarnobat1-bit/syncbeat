@@ -200,6 +200,11 @@ export function YouTubePlayer({
             iframe.setAttribute('allow', 'accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share');
             iframe.setAttribute('allowfullscreen', 'true');
           }
+          try {
+            if (isPlaying) {
+              e.target.playVideo();
+            }
+          } catch {}
           onReady();
         },
         onStateChange: (event: any) => {
@@ -251,6 +256,19 @@ export function YouTubePlayer({
       } catch {}
     };
   }, []);
+
+  // Reactively sync isPlaying boolean with YouTube player
+  useEffect(() => {
+    if (!playerRef.current || typeof playerRef.current.getPlayerState !== 'function') return;
+    try {
+      const state = playerRef.current.getPlayerState();
+      if (isPlaying && state !== window.YT.PlayerState.PLAYING && state !== window.YT.PlayerState.BUFFERING) {
+        playerRef.current.playVideo();
+      } else if (!isPlaying && state === window.YT.PlayerState.PLAYING) {
+        playerRef.current.pauseVideo();
+      }
+    } catch {}
+  }, [isPlaying]);
 
   // 🎯 ZERO-DRIFT REMOTE STATE & HEARTBEAT SYNC
   useEffect(() => {
