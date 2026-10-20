@@ -1,6 +1,6 @@
 services:
   - type: web
-    name: syncbeat
+    name: syncbeat-vaibhav
     env: node
     region: oregon
     plan: free
