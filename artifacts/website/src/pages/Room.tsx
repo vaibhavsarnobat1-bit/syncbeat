@@ -703,8 +703,19 @@ export default function RoomPage() {
         duration: result.duration,
       });
     } else {
-      // ⚡ INSTANT LOCAL TRIGGER: don't wait for server roundtrip
+      // ⚡ INSTANT LOCAL TRIGGER: optimistic track switch so song plays with 0ms lag
       try {
+        setRoom((prev: Room | null) => ({
+          ...(prev || fallbackRoom),
+          currentTrack: {
+            videoId: result.videoId,
+            title: result.title,
+            thumbnail: result.thumbnail,
+            duration: result.duration,
+          },
+          currentTime: 0,
+          isPlaying: true,
+        }));
         playerControlRef.current?.playVideo();
         backgroundAudioManager.startKeepAlive();
       } catch {}
