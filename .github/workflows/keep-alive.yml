@@ -1,36 +1,34 @@
 name: Keep SyncBeat awake
 
-# Render's free tier spins the service down after ~15 minutes without traffic,
-# so the next visitor waits for a cold start. This pings the health endpoint
-# often enough that the service stays warm.
+# Render's free tier spins the service down after ~15 minutes without traffic, and
+# the next visitor waits for a cold start. GitHub only fires `schedule` triggers
+# best-effort — this repo's logs show 3-5 hour gaps between runs — so each run
+# pings continuously for ~55 minutes instead of hitting once and exiting.
 on:
   schedule:
-    - cron: "*/5 * * * *"
+    - cron: "*/15 * * * *"
   workflow_dispatch:
 
 jobs:
   ping:
     runs-on: ubuntu-latest
-    timeout-minutes: 2
+    timeout-minutes: 58
+    concurrency:
+      group: keep-awake
+      cancel-in-progress: false
     steps:
-      - name: Hit /api/healthz
+      - name: Ping the service every 30s for ~55 minutes
         run: |
-          for i in 1 2 3; do
-            code=$(curl -s -o /dev/null -w '%{http_code}' --max-time 30 \
-              https://syncbeat-vaibhav.onrender.com/api/healthz) || code=000
-            echo "attempt $i -> $code"
-            [ "$code" = "200" ] && exit 0
-            sleep 20
+          base=https://syncbeat-vaibhav.onrender.com
+          for i in $(seq 1 110); do
+            code=$(curl -s -o /dev/null -w '%{http_code}' --max-time 25 "$base/api/healthz") || code=000
+            # An external Postgres suspends its compute while no queries arrive, so the
+            # first sign-in after a quiet spell waits for that too. This route runs one
+            # cheap SELECT on `users` and only answers 200 when the database is reachable.
+            db=$(curl -s -o /dev/null -w '%{http_code}' --max-time 25 "$base/api/auth/username/warmup/available") || db=000
+            echo "attempt $i -> app $code, db $db"
+            sleep 30
           done
-          # A cold service answers 503/timeout on the first hit; that wake-up is
-          # the point of this job, so a failure here is not worth an email.
+          # A cold service answers 503/timeout on the first hit; that wake-up is the
+          # point of this job, so a failure here is not worth an email.
           exit 0
-
-      - name: Wake the database too
-        run: |
-          # An external free Postgres suspends its compute when no queries arrive,
-          # so the first visitor of a quiet spell waits for it to come back. This
-          # route runs one cheap SELECT on `users`, and only answers 200 when the
-          # database is actually reachable.
-          curl -s -o /dev/null -w 'db -> %{http_code}\n' --max-time 60 \
-            https://syncbeat-vaibhav.onrender.com/api/auth/username/warmup/available || true

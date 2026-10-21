@@ -10,7 +10,13 @@ import { ElementsCollection } from '@designcodeio/threeui';
 import '@designcodeio/threeui/style.css';
 
 const LAST_USERNAME_KEY = 'sb_last_username';
+const NAME_PATTERN = /^[a-z0-9_.-]{3,24}$/;
 type Mode = 'signup' | 'signin';
+type NameCheck = {
+  state: 'idle' | 'checking' | 'free' | 'taken' | 'invalid' | 'offline';
+  msg?: string;
+  suggestions?: string[];
+};
 
 export default function Login() {
   const [, setLocation] = useLocation();
@@ -27,7 +33,7 @@ export default function Login() {
   const [showPassword, setShowPassword] = useState(false);
   const [error, setError] = useState('');
   const [busy, setBusy] = useState(false);
-  const [nameCheck, setNameCheck] = useState<{ state: 'idle' | 'checking' | 'free' | 'taken'; msg?: string }>({ state: 'idle' });
+  const [nameCheck, setNameCheck] = useState<NameCheck>({ state: 'idle' });
   const inputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
@@ -47,6 +53,10 @@ export default function Login() {
       setNameCheck({ state: 'idle' });
       return;
     }
+    if (!NAME_PATTERN.test(name)) {
+      setNameCheck({ state: 'invalid', msg: 'Use 3-24 characters: letters, numbers, . _ -' });
+      return;
+    }
     let cancelled = false;
     setNameCheck({ state: 'checking' });
     const t = setTimeout(async () => {
@@ -54,9 +64,23 @@ export default function Login() {
         const res = await fetch(`/api/auth/username/${encodeURIComponent(name)}/available`);
         const data = await res.json().catch(() => ({}));
         if (cancelled) return;
-        setNameCheck(data?.available
-          ? { state: 'free', msg: `${name} is available` }
-          : { state: 'taken', msg: data?.reason || 'Already taken — sign in instead' });
+        if (res.status === 503 || data?.offline) {
+          // Nothing wrong with the name they typed — the server cannot see accounts right now
+          setNameCheck({ state: 'offline', msg: data?.reason || 'Accounts are temporarily offline on this server.' });
+          return;
+        }
+        if (data?.available) {
+          setNameCheck({ state: 'free', msg: `${name} is available` });
+          return;
+        }
+        const taken = await fetch(`/api/auth/username/${encodeURIComponent(name)}/suggestions`)
+          .then((r) => r.json())
+          .catch(() => ({}));
+        setNameCheck({
+          state: 'taken',
+          msg: `${name} is already registered — sign in, or try one of these`,
+          suggestions: Array.isArray(taken?.suggestions) ? taken.suggestions.slice(0, 3) : [],
+        });
       } catch {
         if (!cancelled) setNameCheck({ state: 'idle' });
       }
@@ -68,13 +92,12 @@ export default function Login() {
     e.preventDefault();
     if (busy) return;
     const name = username.trim().toLowerCase();
-    if (mode === 'signup' && !/^[a-z0-9_.-]{3,24}$/.test(name)) {
+    if (mode === 'signup' && !NAME_PATTERN.test(name)) {
       setError('Use 3-24 characters: letters, numbers, . _ -');
       return;
     }
     if (mode === 'signup' && nameCheck.state === 'taken') {
-      setMode('signin');
-      setError('That username is already taken. Switch to Sign in and use your password.');
+      setError(`${name} is already registered. Pick a suggestion below, or switch to Sign in if it is your account.`);
       return;
     }
     if (password.length < 6) {
@@ -92,10 +115,9 @@ export default function Login() {
       setLocation(session.role === 'admin' && !inviteCode ? '/admin' : next, { replace: true });
     } catch (err: unknown) {
       const message = err instanceof Error ? err.message : 'Please try again';
-      // Usernames are unique, so a clash means the account already exists — point them at Sign in
+      // Usernames are unique, so a clash means the account already exists
       if (mode === 'signup' && /taken|already/i.test(message)) {
-        setMode('signin');
-        setError('That username is already taken. Switch to Sign in and use your password.');
+        setError('That username is already registered. Pick a suggestion below, or switch to Sign in if it is your account.');
       } else {
         setError(message);
       }
@@ -212,11 +234,28 @@ export default function Login() {
                       ? 'text-white/40'
                       : nameCheck.state === 'free'
                         ? 'text-emerald-300'
-                        : 'text-rose-300'
+                        : nameCheck.state === 'offline'
+                          ? 'text-amber-300/80'
+                          : 'text-rose-300'
                   }`}
                 >
                   {nameCheck.state === 'checking' ? 'Checking username…' : nameCheck.msg}
                 </p>
+              )}
+              {mode === 'signup' && nameCheck.state === 'taken' && !!nameCheck.suggestions?.length && (
+                <div id="username-suggestions" className="mt-2 flex flex-wrap items-center gap-1.5">
+                  <span className="text-[10px] font-bold uppercase tracking-wider text-white/35">Free to use</span>
+                  {nameCheck.suggestions.map((s) => (
+                    <button
+                      key={s}
+                      type="button"
+                      onClick={() => setUsername(s)}
+                      className="px-2.5 py-1 rounded-lg bg-cyan-500/12 border border-cyan-400/30 text-[11px] font-semibold text-cyan-200 hover:bg-cyan-500/25 hover:border-cyan-300/60 transition-all cursor-pointer"
+                    >
+                      {s}
+                    </button>
+                  ))}
+                </div>
               )}
             </label>
 

@@ -10,7 +10,7 @@ import {
   validCredentials,
   type AuthedRequest,
 } from "../lib/auth.js";
-import { dbUnavailable, queryOne } from "../lib/db.js";
+import { dbUnavailable, query, queryOne } from "../lib/db.js";
 
 const router: IRouter = Router();
 
@@ -54,9 +54,44 @@ router.get("/username/:username/available", async (req: Request, res: Response) 
     return;
   }
   const down = dbUnavailable();
-  if (down) { res.status(503).json({ available: false, reason: "Accounts are briefly unavailable on this server." }); return; }
+  if (down) { res.status(503).json({ available: false, offline: true, reason: "Accounts are temporarily offline on this server." }); return; }
   const row = await queryOne<Record<string, unknown>>(`SELECT COUNT(*)::text c FROM users WHERE username=$1`, [username]);
   res.json({ available: Number(row?.c ?? 0) === 0 });
+});
+
+const NAME_PATTERN = /^[a-z0-9_.-]{3,24}$/;
+
+function candidateNames(base: string): string[] {
+  // Trim the digits they already tried so the suggestion reads as `vaibhav48`, not `vaibhav1223_0148`
+  const stripped = base.replace(/[0-9._-]+$/, "");
+  const root = (stripped.length >= 3 ? stripped : base).slice(0, 19).replace(/[._-]+$/, "");
+  const dice = () => String(Math.floor(Math.random() * 90) + 10);
+  const out = new Set([
+    `${root}1234`,
+    `${root}_01`,
+    `${root}${dice()}`,
+    `the_${root}`.slice(0, 24),
+    `${root}.${dice()}${dice()}`,
+    `${root}_${dice()}`,
+  ]);
+  return [...out].filter((n) => NAME_PATTERN.test(n) && n !== base).slice(0, 6);
+}
+
+router.get("/username/:username/suggestions", async (req: Request, res: Response) => {
+  const username = normalizeUsername(req.params.username);
+  if (!NAME_PATTERN.test(username)) {
+    res.json({ suggestions: [] });
+    return;
+  }
+  const down = dbUnavailable();
+  if (down) {
+    res.status(503).json({ suggestions: [], reason: "Accounts are temporarily offline on this server." });
+    return;
+  }
+  const wanted = candidateNames(username);
+  const taken = await query<Record<string, unknown>>(`SELECT username FROM users WHERE username = ANY($1)`, [wanted]);
+  const busy = new Set(taken.map((r) => String(r.username)));
+  res.json({ suggestions: wanted.filter((n) => !busy.has(n)).slice(0, 3) });
 });
 
 router.post("/register", async (req: Request, res: Response) => {
