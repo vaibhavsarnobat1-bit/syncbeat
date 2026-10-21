@@ -1,17 +1,27 @@
 import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
-import type { UserSession } from '@workspace/api-client-react';
+
+export interface SessionUser {
+  token: string;
+  userId: string;
+  username: string;
+  displayName: string;
+  avatarColor: string;
+  role: 'user' | 'admin';
+  email?: string;
+  photoUrl?: string;
+}
 
 interface AuthState {
-  user: UserSession | null;
-  setUser: (user: UserSession | null) => void;
+  user: SessionUser | null;
+  setSession: (user: SessionUser | null) => void;
 }
 
 export const useAuthStore = create<AuthState>()(
   persist(
     (set) => ({
       user: null,
-      setUser: (user) => set({ user }),
+      setSession: (user) => set({ user }),
     }),
     {
       name: 'lt_user',
@@ -29,7 +39,7 @@ export const useRecentRoomsStore = create<RecentRoomsState>()(
   persist(
     (set) => ({
       rooms: [],
-      addRoom: (inviteCode, name) => 
+      addRoom: (inviteCode, name) =>
         set((state) => {
           const filtered = state.rooms.filter(r => r.inviteCode !== inviteCode);
           return {

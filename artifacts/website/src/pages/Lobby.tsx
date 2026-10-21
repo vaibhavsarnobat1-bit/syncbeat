@@ -6,8 +6,8 @@ import {
   Music2, Radio, Sparkles, ArrowUpRight,
   Copy, Check, RefreshCw, Clock, Trash2, Globe, QrCode
 } from 'lucide-react';
-import { useCreateRoom } from '@workspace/api-client-react';
 import { useAuthStore, useRecentRoomsStore } from '@/lib/store';
+import { authFetch, logoutRequest } from '@/lib/authApi';
 import { Music3DCanvas } from '@/components/3d/Music3DCanvas';
 import { BrandMark } from '@/components/BrandMark';
 import { Card3DTilt } from '@/components/3d/Card3DTilt';
@@ -192,16 +192,24 @@ const TABS = [
     gradient: 'linear-gradient(135deg, rgba(139,92,246,0.32) 0%, rgba(168,85,247,0.18) 100%)',
     glow: 'rgba(139, 92, 246, 0.28)',
   },
+  {
+    id: 'mine',
+    label: 'My Rooms',
+    icon: Clock,
+    activeColor: '#bbf7d0',
+    gradient: 'linear-gradient(135deg, rgba(16,185,129,0.32) 0%, rgba(5,150,105,0.18) 100%)',
+    glow: 'rgba(16, 185, 129, 0.28)',
+  },
 ] as const;
 
 export default function Lobby() {
   const [, setLocation] = useLocation();
-  const { user, setUser } = useAuthStore();
+  const { user } = useAuthStore();
   const { rooms: recentRooms, removeRoom } = useRecentRoomsStore();
 
   const [roomName, setRoomName] = useState('');
   const [inviteCode, setInviteCode] = useState('');
-  const [activeTab, setActiveTab] = useState<'create' | 'join' | 'discover'>('create');
+  const [activeTab, setActiveTab] = useState<'create' | 'join' | 'discover' | 'mine'>('create');
   const [myRoom, setMyRoom] = useState<{ name: string; inviteCode: string; memberCount: number; currentTrack?: { title: string } | null } | null>(null);
   const [loadingMyRoom, setLoadingMyRoom] = useState(false);
   const [copied, setCopied] = useState(false);
@@ -211,9 +219,13 @@ export default function Lobby() {
   const [publicRooms, setPublicRooms] = useState<any[]>([]);
   const [loadingPublic, setLoadingPublic] = useState(false);
 
+  // Rooms this account has joined (server-side, with delete)
+  const [myRooms, setMyRooms] = useState<any[]>([]);
+  const [loadingMyRooms, setLoadingMyRooms] = useState(false);
+
   const fetchPublicRooms = useCallback(() => {
     setLoadingPublic(true);
-    fetch('/api/rooms/public')
+    authFetch('/api/rooms/public')
       .then((r) => (r.ok ? r.json() : []))
       .then((data) => {
         setPublicRooms(data || []);
@@ -221,6 +233,20 @@ export default function Lobby() {
       .catch(() => setPublicRooms([]))
       .finally(() => setLoadingPublic(false));
   }, []);
+
+  const fetchMyRooms = useCallback(() => {
+    setLoadingMyRooms(true);
+    authFetch('/api/rooms/mine')
+      .then((r) => (r.ok ? r.json() : []))
+      .then((data) => setMyRooms(Array.isArray(data) ? data : []))
+      .catch(() => setMyRooms([]))
+      .finally(() => setLoadingMyRooms(false));
+  }, []);
+
+  const forgetMyRoom = async (code: string) => {
+    setMyRooms((prev) => prev.filter((r) => r.inviteCode !== code));
+    await authFetch(`/api/rooms/mine/${encodeURIComponent(code)}`, { method: 'DELETE' }).catch(() => {});
+  };
 
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
@@ -234,7 +260,7 @@ export default function Lobby() {
   useEffect(() => {
     if (!user?.userId) return;
     setLoadingMyRoom(true);
-    fetch(`/api/rooms/by-host/${user.userId}`)
+    authFetch(`/api/rooms/by-host/${user.userId}`)
       .then((r) => (r.ok ? r.json() : null))
       .then((data) => {
         setMyRoom(data || null);
@@ -247,16 +273,10 @@ export default function Lobby() {
     if (activeTab === 'discover') {
       fetchPublicRooms();
     }
-  }, [activeTab, fetchPublicRooms]);
-
-  const { mutate: createRoom, isPending: isCreating } = useCreateRoom({
-    mutation: {
-      onSuccess: (data: any) => {
-        setMyRoom(data);
-        setLocation(`/room/${data.inviteCode}`);
-      },
-    },
-  });
+    if (activeTab === 'mine') {
+      fetchMyRooms();
+    }
+  }, [activeTab, fetchPublicRooms, fetchMyRooms]);
 
   const [isCreatingRoom, setIsCreatingRoom] = useState(false);
   const [createError, setCreateError] = useState<string | null>(null);
@@ -275,25 +295,11 @@ export default function Lobby() {
     setIsCreatingRoom(true);
     setCreateError(null);
 
-    let activeUser = user;
-    if (!activeUser?.userId) {
-      activeUser = {
-        userId: 'anon-' + Math.random().toString(36).substring(2, 9),
-        displayName: 'Guest_' + Math.floor(100 + Math.random() * 900),
-        avatarColor: '#00d4d4',
-      };
-      setUser(activeUser);
-    }
-
     try {
-      const res = await fetch('/api/rooms', {
+      const res = await authFetch('/api/rooms', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          name: trimmed,
-          hostUserId: activeUser.userId,
-          hostDisplayName: activeUser.displayName,
-        }),
+        body: JSON.stringify({ name: trimmed }),
       });
 
       if (res.ok) {
@@ -304,7 +310,7 @@ export default function Lobby() {
         const errJson = await res.json().catch(() => ({}));
         setCreateError(errJson.error || 'Failed to create room. Please ensure the backend server is running on port 3001.');
       }
-    } catch (err: any) {
+    } catch {
       setCreateError('Could not reach backend server on port 3001. Please make sure the server is started.');
     } finally {
       setIsCreatingRoom(false);
@@ -429,7 +435,7 @@ export default function Lobby() {
             {/* Logout */}
             <button
               onClick={() => {
-                setUser(null);
+                void logoutRequest();
                 setLocation('/login');
               }}
               className="chip-pop p-2 rounded-xl text-white/40 hover:text-white hover:bg-white/5 border border-white/6"
@@ -925,6 +931,149 @@ export default function Lobby() {
                                 className="btn-shine chip-pop flex items-center gap-1 px-4 py-2.5 rounded-xl text-xs font-bold transition-all text-white bg-gradient-to-r from-purple-600 to-fuchsia-600 hover:shadow-[0_0_22px_rgba(168,85,247,0.45)] border border-purple-400/30 shrink-0"
                               >
                                 Vibe In <ArrowRight className="w-3 h-3" />
+                              </button>
+                            </motion.div>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                </PanelStage>
+              </motion.div>
+            )}
+            {activeTab === 'mine' && (
+              <motion.div
+                key="mine"
+                initial={{ opacity: 0, y: 26, rotateX: 7 }}
+                animate={{ opacity: 1, y: 0, rotateX: 0 }}
+                exit={{ opacity: 0, y: -18, rotateX: -5 }}
+                transition={{ duration: 0.3, ease: [0.22, 1, 0.36, 1] }}
+              >
+                <PanelStage>
+                  <div className="card-gradient-border relative rounded-3xl p-6 sm:p-8 overflow-hidden shadow-[0_35px_90px_rgba(0,0,0,0.9)]">
+                    <div
+                      className="absolute -left-24 -top-24 w-72 h-72 rounded-full blur-3xl opacity-20 pointer-events-none"
+                      style={{ background: 'radial-gradient(circle, #10b981 0%, transparent 70%)' }}
+                      aria-hidden="true"
+                    />
+                    <div
+                      className="absolute -right-20 -bottom-24 w-64 h-64 rounded-full blur-3xl opacity-10 pointer-events-none"
+                      style={{ background: 'radial-gradient(circle, #22d3ee 0%, transparent 70%)' }}
+                      aria-hidden="true"
+                    />
+
+                    <div className="relative z-10">
+                      <div className="flex items-center justify-between mb-1">
+                        <div>
+                          <p className="text-[10px] font-bold uppercase tracking-[0.24em] text-emerald-300/70 mb-2 flex items-center gap-2">
+                            <span className="w-5 h-px bg-gradient-to-r from-emerald-400 to-transparent inline-block" />
+                            Saved To Your Account
+                          </p>
+                          <h3
+                            className="text-3xl sm:text-4xl font-black text-white tracking-tight"
+                            style={{ fontFamily: 'var(--app-font-display)' }}
+                          >
+                            My <span className="text-shimmer">Rooms</span>
+                          </h3>
+                          <p className="text-xs text-white/40 mt-1.5 mb-7">
+                            Every room you joined is listed here. Rejoin any time, or remove it from your list.
+                          </p>
+                        </div>
+                        <button
+                          onClick={fetchMyRooms}
+                          disabled={loadingMyRooms}
+                          className="chip-pop p-2.5 rounded-xl text-white/50 hover:text-emerald-300 hover:bg-emerald-500/10 border border-white/8 shrink-0"
+                          title="Refresh"
+                        >
+                          <RefreshCw className={`w-4 h-4 ${loadingMyRooms ? 'animate-spin' : ''}`} />
+                        </button>
+                      </div>
+
+                      {loadingMyRooms ? (
+                        <div className="py-14 flex flex-col items-center justify-center text-white/40">
+                          <div className="relative mb-4">
+                            <div className="w-12 h-12 rounded-full border-2 border-emerald-400/20 border-t-emerald-400 animate-spin" />
+                            <div className="absolute inset-0 flex items-center justify-center">
+                              <Music2 className="w-5 h-5 text-emerald-400/70" />
+                            </div>
+                          </div>
+                          <p className="text-xs font-semibold">Loading your rooms...</p>
+                        </div>
+                      ) : myRooms.length === 0 ? (
+                        <div className="py-10 text-center rounded-2xl bg-white/[0.01] border border-white/5 p-6 flex flex-col items-center justify-center">
+                          <div className="animate-float-3d mb-3">
+                            <VinylDisc size={72} labelColor="#10b981" spinning />
+                          </div>
+                          <p className="text-sm font-semibold text-white/50">No rooms saved yet</p>
+                          <p className="text-xs text-white/30 mt-1 max-w-[260px] mx-auto leading-normal">
+                            Create or join a room and it will appear here, tied to your account.
+                          </p>
+                          <button
+                            onClick={() => setActiveTab('create')}
+                            className="chip-pop mt-5 px-5 py-2.5 rounded-xl bg-emerald-500/15 text-emerald-300 border border-emerald-500/25 text-xs font-bold hover:bg-emerald-500/25"
+                          >
+                            Create Your First Room
+                          </button>
+                        </div>
+                      ) : (
+                        <div className="max-h-[320px] overflow-y-auto space-y-3 pr-1.5 scrollbar-hide">
+                          {myRooms.map((room, idx) => (
+                            <motion.div
+                              key={room.inviteCode}
+                              initial={{ opacity: 0, x: -14 }}
+                              animate={{ opacity: 1, x: 0 }}
+                              transition={{ delay: idx * 0.05 }}
+                              className="row-slide flex items-center gap-3.5 p-4 rounded-2xl bg-white/[0.02] border border-white/6 hover:border-emerald-500/50 hover:bg-emerald-500/[0.05] hover:shadow-[0_8px_28px_rgba(16,185,129,0.12)] group"
+                            >
+                              <div
+                                className="w-11 h-11 rounded-xl flex flex-col items-center justify-center shrink-0 gap-1"
+                                style={{
+                                  background: 'linear-gradient(145deg, rgba(16,185,129,0.2), rgba(16,185,129,0.06))',
+                                  border: '1px solid rgba(16,185,129,0.3)',
+                                  boxShadow: '0 0 18px rgba(16,185,129,0.12)',
+                                }}
+                              >
+                                <MiniEQ color="#34d399" />
+                              </div>
+                              <div className="flex-1 min-w-0">
+                                <div className="flex items-center gap-2">
+                                  <span className="font-semibold text-sm truncate group-hover:text-emerald-200 transition-colors">
+                                    {room.name}
+                                  </span>
+                                  <span className="text-[10px] bg-white/5 border border-white/8 rounded-full px-2 py-0.5 text-white/40 shrink-0 font-mono">
+                                    {room.inviteCode}
+                                  </span>
+                                </div>
+                                <div className="flex items-center gap-3 mt-1.5 text-[11px] text-white/35">
+                                  <span className="flex items-center gap-1">
+                                    <Clock className="w-3 h-3 text-emerald-400" />
+                                    {room.lastSeenAt ? new Date(room.lastSeenAt).toLocaleDateString() : '—'}
+                                  </span>
+                                  {room.isPlaying ? (
+                                    <span className="flex items-center gap-1 text-emerald-300/80 font-semibold">
+                                      <Radio className="w-3 h-3" /> Live
+                                    </span>
+                                  ) : null}
+                                  {room.currentTrack?.title ? (
+                                    <span className="truncate max-w-[150px] sm:max-w-[200px] text-emerald-400/80 font-medium">
+                                      🎵 {room.currentTrack.title}
+                                    </span>
+                                  ) : null}
+                                </div>
+                              </div>
+                              <button
+                                onClick={() => setLocation(`/room/${room.inviteCode}`)}
+                                className="btn-shine chip-pop flex items-center gap-1 px-4 py-2.5 rounded-xl text-xs font-bold transition-all text-white bg-gradient-to-r from-emerald-600 to-teal-600 hover:shadow-[0_0_22px_rgba(16,185,129,0.45)] border border-emerald-400/30 shrink-0"
+                              >
+                                Rejoin <ArrowRight className="w-3 h-3" />
+                              </button>
+                              <button
+                                onClick={() => forgetMyRoom(room.inviteCode)}
+                                id={`btn-forget-room-${room.inviteCode}`}
+                                className="chip-pop p-2.5 rounded-xl text-white/35 hover:text-rose-300 hover:bg-rose-500/10 border border-white/6 shrink-0"
+                                title="Remove from my rooms"
+                              >
+                                <Trash2 className="w-4 h-4" />
                               </button>
                             </motion.div>
                           ))}

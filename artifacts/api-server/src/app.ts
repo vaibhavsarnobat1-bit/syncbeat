@@ -3,6 +3,7 @@ import cors from "cors";
 import path from "path";
 import fs from "fs";
 import router from "./routes";
+import { attachUser } from "./lib/auth.js";
 
 const app: Express = express();
 
@@ -10,6 +11,7 @@ app.use(cors({ origin: "*", credentials: false }));
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 
+app.use(attachUser);
 app.use("/api", router);
 
 if (process.env.NODE_ENV === "production") {

@@ -6,6 +6,9 @@ export interface Track {
   title: string;
   thumbnail: string;
   duration: number;
+  source?: "youtube" | "device";
+  mediaId?: string;
+  uploadedBy?: string;
 }
 
 export interface RoomMember {
@@ -109,7 +112,10 @@ async function loadMessagesFromDB(inviteCode: string): Promise<ChatMessage[]> {
       avatar_color: string; text: string; timestamp: string; is_system: boolean;
     }>(
       `SELECT id, user_id, display_name, avatar_color, text, timestamp, is_system
-       FROM messages WHERE room_invite_code=$1 ORDER BY timestamp ASC LIMIT 500`,
+       FROM (
+         SELECT id, user_id, display_name, avatar_color, text, timestamp, is_system
+         FROM messages WHERE room_invite_code=$1 ORDER BY timestamp DESC LIMIT 500
+       ) recent ORDER BY timestamp ASC`,
       [inviteCode]
     );
     return rows.map(r => ({
@@ -191,6 +197,72 @@ export function getRoomByInviteCode(inviteCode: string): Room | undefined {
   return rooms.get(inviteCode);
 }
 
+// A room that only exists in the database (server restarted) is hydrated on first touch,
+// so invite links keep working after a deploy instead of reporting "Room not found".
+export async function resolveRoom(inviteCode: string): Promise<Room | undefined> {
+  const live = rooms.get(inviteCode);
+  if (live) return live;
+  const row = await queryOne<Record<string, unknown>>(
+    `SELECT * FROM rooms WHERE invite_code=$1`,
+    [inviteCode]
+  );
+  if (!row) return undefined;
+  const room = rowToRoom(row);
+  room.messages = await loadMessagesFromDB(room.inviteCode);
+  rooms.set(room.inviteCode, room);
+  return room;
+}
+
+export async function recordMembership(
+  inviteCode: string,
+  member: { userId: string; displayName: string; avatarColor: string }
+): Promise<void> {
+  const now = Date.now();
+  await query(
+    `INSERT INTO room_members (room_invite_code, user_id, display_name, avatar_color, joined_at, last_seen_at)
+     VALUES ($1,$2,$3,$4,$5,$5)
+     ON CONFLICT (room_invite_code, user_id)
+     DO UPDATE SET last_seen_at=EXCLUDED.last_seen_at, display_name=EXCLUDED.display_name, removed_at=NULL`,
+    [inviteCode, member.userId, member.displayName, member.avatarColor, now]
+  );
+}
+
+export interface UserRoom {
+  inviteCode: string;
+  name: string;
+  hostUserId: string;
+  joinedAt: number;
+  lastSeenAt: number;
+  isPlaying: boolean;
+  currentTrack: Track | null;
+}
+
+export async function listUserRooms(userId: string): Promise<UserRoom[]> {
+  const rows = await query<Record<string, unknown>>(
+    `SELECT m.room_invite_code, m.joined_at, m.last_seen_at, r.name, r.host_user_id, r.is_playing, r.current_track
+     FROM room_members m JOIN rooms r ON r.invite_code = m.room_invite_code
+     WHERE m.user_id=$1 AND m.removed_at IS NULL
+     ORDER BY m.last_seen_at DESC LIMIT 30`,
+    [userId]
+  );
+  return rows.map((r) => ({
+    inviteCode: r.room_invite_code as string,
+    name: r.name as string,
+    hostUserId: r.host_user_id as string,
+    joinedAt: Number(r.joined_at),
+    lastSeenAt: Number(r.last_seen_at),
+    isPlaying: Boolean(r.is_playing),
+    currentTrack: (r.current_track as Track) ?? null,
+  }));
+}
+
+export async function forgetRoom(userId: string, inviteCode: string): Promise<void> {
+  await query(
+    `UPDATE room_members SET removed_at=$3 WHERE user_id=$1 AND room_invite_code=$2`,
+    [userId, inviteCode, Date.now()]
+  );
+}
+
 export async function getRoomByHostUserId(hostUserId: string): Promise<Room | null> {
   // Check in-memory first
   for (const room of rooms.values()) {
@@ -213,13 +285,17 @@ export async function getRoomByHostUserId(hostUserId: string): Promise<Room | nu
 }
 
 export async function deleteRoom(inviteCode: string): Promise<boolean> {
-  rooms.delete(inviteCode);
+  const existed = rooms.delete(inviteCode);
   try {
-    await query(`DELETE FROM rooms WHERE invite_code=$1`, [inviteCode]);
+    await query(`DELETE FROM messages WHERE room_invite_code=$1`, [inviteCode]);
+    await query(`DELETE FROM room_members WHERE room_invite_code=$1`, [inviteCode]);
+    await query(`DELETE FROM media_files WHERE room_invite_code=$1`, [inviteCode]);
+    const rows = await query("DELETE FROM rooms WHERE invite_code=$1 RETURNING id", [inviteCode]);
+    return rows.length > 0 || existed;
   } catch (err) {
     console.error("[DB] deleteRoom error:", err);
+    return existed;
   }
-  return true;
 }
 
 export async function updateRoomPlayback(room: Room): Promise<void> {
@@ -237,43 +313,6 @@ export async function addMessageToRoom(inviteCode: string, msg: ChatMessage): Pr
 
 export function getAllRooms(): Room[] {
   return Array.from(rooms.values());
-}
-
-export function getAllUsers(): RoomMember[] {
-  const seen = new Set<string>();
-  const users: RoomMember[] = [];
-  for (const room of rooms.values()) {
-    for (const member of room.members.values()) {
-      if (!seen.has(member.userId)) {
-        seen.add(member.userId);
-        users.push(member);
-      }
-    }
-  }
-  return users;
-}
-
-export function getStats() {
-  const allRooms = getAllRooms();
-  const uniqueUsers = new Set<string>();
-  let totalMessages = 0;
-  let activeRooms = 0;
-  for (const room of allRooms) {
-    for (const m of room.members.values()) uniqueUsers.add(m.userId);
-    totalMessages += room.messages.length;
-    if (room.members.size > 0) activeRooms++;
-  }
-  return { totalRooms: allRooms.length, activeRooms, totalUsers: uniqueUsers.size, totalMessages };
-}
-
-export function getAllMessages(): Array<ChatMessage & { roomName: string; inviteCode: string }> {
-  const allMessages: Array<ChatMessage & { roomName: string; inviteCode: string }> = [];
-  for (const room of rooms.values()) {
-    for (const msg of room.messages) {
-      allMessages.push({ ...msg, roomName: room.name, inviteCode: room.inviteCode });
-    }
-  }
-  return allMessages.sort((a, b) => b.timestamp - a.timestamp);
 }
 
 export function roomToJSON(room: Room) {

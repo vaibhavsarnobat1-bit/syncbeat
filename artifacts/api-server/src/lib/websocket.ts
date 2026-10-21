@@ -2,9 +2,11 @@ import { WebSocketServer, WebSocket } from "ws";
 import { IncomingMessage } from "http";
 import { Server } from "http";
 import { nanoid } from "nanoid";
+import { resolveToken } from "./auth.js";
 import {
   getRoomByInviteCode,
-  generateAvatarColor,
+  resolveRoom,
+  recordMembership,
   addMessageToRoom,
   updateRoomPlayback,
   deleteRoom,
@@ -59,12 +61,33 @@ export function setupWebSocket(server: Server) {
   }
 
   wss.on("connection", (ws: WebSocket, req: IncomingMessage) => {
+    void handleConnection(ws, req);
+  });
+
+  async function handleConnection(ws: WebSocket, req: IncomingMessage): Promise<void> {
     const client = ws as WsClient;
     const url = new URL(req.url!, `http://${req.headers.host}`);
     const roomId = url.searchParams.get("roomId") || "";
-    const userId = url.searchParams.get("userId") || nanoid(12);
-    const displayName = url.searchParams.get("displayName") || `Guest${Math.floor(Math.random() * 9999)}`;
-    const avatarColor = url.searchParams.get("avatarColor") || generateAvatarColor();
+    const user = await resolveToken(
+      url.searchParams.get("token") || url.searchParams.get("t") || undefined
+    );
+
+    if (!user) {
+      client.send(JSON.stringify({ type: "error", message: "Sign in required" }));
+      client.close();
+      return;
+    }
+
+    const userId = user.id;
+    const displayName = user.displayName;
+    const avatarColor = user.avatarColor;
+
+    const room = await resolveRoom(roomId);
+    if (!room) {
+      client.send(JSON.stringify({ type: "error", message: "Room not found" }));
+      client.close();
+      return;
+    }
 
     client.userId = userId;
     client.displayName = displayName;
@@ -72,15 +95,9 @@ export function setupWebSocket(server: Server) {
     client.roomInviteCode = roomId;
     client.isAlive = true;
 
-    const room = getRoomByInviteCode(roomId);
-    if (!room) {
-      client.send(JSON.stringify({ type: "error", message: "Room not found" }));
-      client.close();
-      return;
-    }
-
     const member: RoomMember = { userId, displayName, avatarColor, joinedAt: Date.now() };
     room.members.set(userId, member);
+    void recordMembership(roomId, { userId, displayName, avatarColor });
 
     const members = Array.from(room.members.values()).map((m) => ({
       userId: m.userId,
@@ -181,6 +198,9 @@ export function setupWebSocket(server: Server) {
           title: String(data.title || ""),
           thumbnail: String(data.thumbnail || ""),
           duration: Number(data.duration) || 0,
+          source: data.source === "device" ? "device" : "youtube",
+          mediaId: data.mediaId ? String(data.mediaId) : undefined,
+          uploadedBy: data.source === "device" ? displayName : undefined,
         };
         room.currentTrack = newTrack;
         room.isPlaying = true;
@@ -305,8 +325,8 @@ export function setupWebSocket(server: Server) {
       // ── Delete room (host only) ──
       } else if (msgType === "delete_room") {
         if (userId !== room.hostUserId) return;
-        broadcastAll(roomId, { type: "room_closed" });
-        deleteRoom(roomId);
+        broadcastAll(roomId, { type: "room_closed", inviteCode: roomId });
+        void deleteRoom(roomId);
         wss.clients.forEach((c) => {
           const wsc = c as WsClient;
           if (wsc.roomInviteCode === roomId) wsc.close();
@@ -322,7 +342,7 @@ export function setupWebSocket(server: Server) {
         memberCount: room.members.size,
       });
     });
-  });
+  }
 
   const pingInterval = setInterval(() => {
     wss.clients.forEach((ws) => {

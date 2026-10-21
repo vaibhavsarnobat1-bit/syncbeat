@@ -109,7 +109,7 @@ export const TrackDeck = memo(function TrackDeck({
                 >
                   <div className="relative shrink-0">
                     <img
-                      src={card.track.thumbnail}
+                      src={card.track.thumbnail || '/brand-icon-192.png'}
                       alt=""
                       className={`rounded-lg object-cover border border-white/10 ${top ? 'w-10 h-10' : 'w-6 h-6'}`}
                       loading="lazy"

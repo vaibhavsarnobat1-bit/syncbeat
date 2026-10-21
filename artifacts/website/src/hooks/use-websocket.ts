@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState, useCallback } from 'react';
-import type { Room, Track } from '@workspace/api-client-react';
+import type { Track } from '@workspace/api-client-react';
 import { useAuthStore } from '@/lib/store';
 
 /** Fire browser notification when offline and a friend changes track */
@@ -46,8 +46,29 @@ export type VoiceUserState = {
   avatarColor: string;
 };
 
+/** Tracks can come from YouTube or from a member's uploaded device song. */
+export type RoomTrack = Track & {
+  source?: 'youtube' | 'device';
+  mediaId?: string;
+  uploadedBy?: string;
+};
+
+export type RoomState = {
+  id: string;
+  name: string;
+  inviteCode: string;
+  hostUserId: string;
+  memberCount: number;
+  currentTrack: RoomTrack | null;
+  queue: RoomTrack[];
+  history: RoomTrack[];
+  isPlaying: boolean;
+  currentTime: number;
+  createdAt?: number;
+};
+
 type WsIncomingMessage =
-  | { type: 'room_state'; room: Room & { queue: Track[]; history: Track[] }; members: WsUser[]; messages: ChatMessage[] }
+  | { type: 'room_state'; room: RoomState; members: WsUser[]; messages: ChatMessage[] }
   | { type: 'chat'; message: ChatMessage }
   | { type: 'user_joined'; user: WsUser; memberCount: number }
   | { type: 'user_left'; userId: string; memberCount: number }
@@ -55,11 +76,11 @@ type WsIncomingMessage =
   | { type: 'pause'; currentTime: number; timestamp?: number }
   | { type: 'seek'; currentTime: number; timestamp?: number }
   | { type: 'sync_tick'; currentTime: number; timestamp?: number; isPlaying?: boolean }
-  | { type: 'track_change'; track: Track; queue: Track[]; history: Track[] }
-  | { type: 'queue_update'; queue: Track[]; addedBy?: string; addedTrack?: Track }
+  | { type: 'track_change'; track: RoomTrack; queue: RoomTrack[]; history: RoomTrack[] }
+  | { type: 'queue_update'; queue: RoomTrack[]; addedBy?: string; addedTrack?: RoomTrack }
   | { type: 'reaction'; id: string; emoji: string; userId: string; displayName: string; avatarColor: string }
   | { type: 'voice_state'; userId: string; displayName: string; avatarColor: string; inVoice: boolean; micMuted: boolean; videoEnabled: boolean }
-  | { type: 'room_closed' }
+  | { type: 'room_closed'; inviteCode?: string }
   | { type: 'error'; message: string };
 
 type WsOutgoingMessage =
@@ -68,7 +89,7 @@ type WsOutgoingMessage =
   | { type: 'pause'; currentTime: number }
   | { type: 'seek'; currentTime: number }
   | { type: 'sync_tick'; currentTime: number; timestamp?: number }
-  | { type: 'track_change'; videoId: string; title: string; thumbnail?: string; duration?: number }
+  | { type: 'track_change'; videoId: string; title: string; thumbnail?: string; duration?: number; source?: 'youtube' | 'device'; mediaId?: string }
   | { type: 'queue_add'; videoId: string; title: string; thumbnail?: string; duration?: number }
   | { type: 'queue_remove'; videoId: string }
   | { type: 'queue_skip' }
@@ -90,11 +111,11 @@ export function useWebSocket(roomId: string | undefined) {
   const [isConnected, setIsConnected] = useState(false);
   const [wsError, setWsError] = useState<string | null>(null);
   const [roomClosed, setRoomClosed] = useState(false);
-  const [room, setRoom] = useState<Room | null>(null);
+  const [room, setRoom] = useState<RoomState | null>(null);
   const [members, setMembers] = useState<WsUser[]>([]);
   const [messages, setMessages] = useState<ChatMessage[]>([]);
-  const [queue, setQueue] = useState<Track[]>([]);
-  const [history, setHistory] = useState<Track[]>([]);
+  const [queue, setQueue] = useState<RoomTrack[]>([]);
+  const [history, setHistory] = useState<RoomTrack[]>([]);
   const [reactions, setReactions] = useState<FloatingReaction[]>([]);
   const [voiceStates, setVoiceStates] = useState<Record<string, VoiceUserState>>({});
   const [remotePlayerState, setRemotePlayerState] = useState<{
@@ -112,7 +133,7 @@ export function useWebSocket(roomId: string | undefined) {
       if (unmountedRef.current) return;
 
       const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
-      const wsUrl = `${protocol}//${window.location.host}/api/ws?roomId=${encodeURIComponent(roomId!)}&userId=${encodeURIComponent(user!.userId)}&displayName=${encodeURIComponent(user!.displayName)}&avatarColor=${encodeURIComponent(user!.avatarColor || '#7c3aed')}`;
+      const wsUrl = `${protocol}//${window.location.host}/api/ws?roomId=${encodeURIComponent(roomId!)}&token=${encodeURIComponent(user!.token)}`;
 
       const ws = new WebSocket(wsUrl);
       wsRef.current = ws;
@@ -188,22 +209,22 @@ export function useWebSocket(roomId: string | undefined) {
               break;
             case 'play':
               setRemotePlayerState({ action: 'play', currentTime: data.currentTime, timestamp: data.timestamp || Date.now() });
-              setRoom((prev: Room | null) => prev ? { ...prev, isPlaying: true, currentTime: data.currentTime } : null);
+              setRoom((prev: RoomState | null) => prev ? { ...prev, isPlaying: true, currentTime: data.currentTime } : null);
               break;
             case 'pause':
               setRemotePlayerState({ action: 'pause', currentTime: data.currentTime, timestamp: data.timestamp || Date.now() });
-              setRoom((prev: Room | null) => prev ? { ...prev, isPlaying: false, currentTime: data.currentTime } : null);
+              setRoom((prev: RoomState | null) => prev ? { ...prev, isPlaying: false, currentTime: data.currentTime } : null);
               break;
             case 'seek':
               setRemotePlayerState({ action: 'seek', currentTime: data.currentTime, timestamp: data.timestamp || Date.now() });
-              setRoom((prev: Room | null) => prev ? { ...prev, currentTime: data.currentTime } : null);
+              setRoom((prev: RoomState | null) => prev ? { ...prev, currentTime: data.currentTime } : null);
               break;
             case 'sync_tick':
               setRemotePlayerState({ action: 'sync_tick', currentTime: data.currentTime, timestamp: data.timestamp || Date.now() });
-              setRoom((prev: Room | null) => prev ? { ...prev, currentTime: data.currentTime } : null);
+              setRoom((prev: RoomState | null) => prev ? { ...prev, currentTime: data.currentTime } : null);
               break;
             case 'track_change':
-              setRoom((prev: Room | null) => {
+              setRoom((prev: RoomState | null) => {
                 // Fire offline notification if user has no internet
                 if (!navigator.onLine) {
                   // Find who changed track from members state (best effort)
@@ -231,6 +252,7 @@ export function useWebSocket(roomId: string | undefined) {
             case 'error':
               setWsError(data.message);
               retryCountRef.current = MAX_RETRIES;
+              if (/sign in/i.test(data.message)) useAuthStore.getState().setSession(null);
               break;
           }
         } catch (e) {

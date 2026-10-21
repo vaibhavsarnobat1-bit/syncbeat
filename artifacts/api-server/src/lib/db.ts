@@ -21,20 +21,27 @@ if (pool) {
   });
 }
 
-let dbAvailable: boolean | null = null;
+let dbBrokenUntil = 0;
+let lastDbError = "";
+const DB_RETRY_MS = 30_000;
+
+export function dbStatus() {
+  return { configured: !!pool, degraded: Date.now() < dbBrokenUntil, lastError: lastDbError };
+}
 
 export async function query<T = Record<string, unknown>>(sql: string, params?: unknown[]): Promise<T[]> {
-  if (!pool || dbAvailable === false) return [];
+  if (!pool) return [];
+  if (Date.now() < dbBrokenUntil) return [];
   try {
     const res = await pool.query(sql, params);
-    dbAvailable = true;
+    dbBrokenUntil = 0;
+    lastDbError = "";
     return res.rows as T[];
   } catch (err: unknown) {
-    if (dbAvailable === null) {
-      const msg = err instanceof Error ? err.message : String(err);
-      console.warn(`[DB] Database unavailable (${msg}). Seamlessly using in-memory mode.`);
-      dbAvailable = false;
-    }
+    const msg = err instanceof Error ? err.message : String(err);
+    dbBrokenUntil = Date.now() + DB_RETRY_MS;
+    if (msg !== lastDbError) console.warn(`[DB] ${msg} — retrying in ${DB_RETRY_MS / 1000}s`);
+    lastDbError = msg;
     return [];
   }
 }

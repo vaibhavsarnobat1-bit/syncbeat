@@ -212,8 +212,13 @@ export default function Home() {
   };
 
   const handleAudioEnded = () => {
-    setIsPlaying(false);
-    setCurrentTimeSec(0);
+    // The preview loops; if a browser skips the loop, restart instead of falling silent
+    if (audioRef.current) {
+      audioRef.current.currentTime = 0;
+      audioRef.current.play().catch(() => setIsPlaying(false));
+    } else {
+      setIsPlaying(false);
+    }
   };
 
   const formatTime = (secs: number) => {
@@ -463,11 +468,12 @@ export default function Home() {
               className="relative w-full rounded-3xl overflow-hidden border border-white/[0.12] shadow-2xl shadow-black/80 bg-[#050810]"
               style={{ aspectRatio: '16/10', minHeight: 320 }}
             >
-              {/* Real Audio Element for Live Music Preview */}
+              {/* Real Audio Element for Live Music Preview — loops so the vibe never stops */}
               <audio
                 ref={audioRef}
                 src="/audio/chill-lofi-beats.mp3"
                 preload="metadata"
+                loop
                 onTimeUpdate={handleAudioTimeUpdate}
                 onLoadedMetadata={handleAudioLoadedMetadata}
                 onEnded={handleAudioEnded}

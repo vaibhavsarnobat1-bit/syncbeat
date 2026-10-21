@@ -1,9 +1,11 @@
-import { useState, useEffect } from "react";
-import { Switch, Route, Router as WouterRouter } from "wouter";
+import { useState, useEffect, type ReactNode } from "react";
+import { Switch, Route, Router as WouterRouter, useLocation } from "wouter";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { Toaster } from "@/components/ui/toaster";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import SplashScreen from "@/components/SplashScreen";
+import { useAuthStore } from "@/lib/store";
+import { refreshSession } from "@/lib/authApi";
 
 import Home from "@/pages/Home";
 import Login from "@/pages/Login";
@@ -17,15 +19,38 @@ const queryClient = new QueryClient({
   defaultOptions: { queries: { refetchOnWindowFocus: false, retry: false } },
 });
 
+function RequireAuth({ children }: { children: ReactNode }) {
+  const [path, setLocation] = useLocation();
+  const user = useAuthStore((s) => s.user);
+
+  useEffect(() => {
+    if (user?.token) return;
+    const code = /\/room\/([^/?]+)/.exec(path)?.[1];
+    const target = code
+      ? `/login?invite=${encodeURIComponent(code)}`
+      : `/login?next=${encodeURIComponent(path)}`;
+    setLocation(target, { replace: true });
+  }, [user, path, setLocation]);
+
+  if (!user?.token) return null;
+  return <>{children}</>;
+}
+
 function Router() {
   return (
     <Switch>
       <Route path="/" component={Home} />
       <Route path="/download" component={DownloadApp} />
       <Route path="/login" component={Login} />
-      <Route path="/lobby" component={Lobby} />
-      <Route path="/room/:inviteCode" component={Room} />
-      <Route path="/admin" component={Admin} />
+      <Route path="/lobby">
+        <RequireAuth><Lobby /></RequireAuth>
+      </Route>
+      <Route path="/room/:inviteCode">
+        <RequireAuth><Room /></RequireAuth>
+      </Route>
+      <Route path="/admin">
+        <RequireAuth><Admin /></RequireAuth>
+      </Route>
       <Route component={NotFound} />
     </Switch>
   );
@@ -54,6 +79,7 @@ export default function App() {
   useEffect(() => {
     registerSW();
     requestNotificationPermission();
+    void refreshSession();
   }, []);
 
   return (

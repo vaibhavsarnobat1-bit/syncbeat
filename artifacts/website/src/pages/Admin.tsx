@@ -5,36 +5,50 @@ import {
   LayoutDashboard, Users, Radio, Trash2,
   RefreshCw, LogOut, Shield, Music2, TrendingUp, Activity,
   ChevronRight, Search, AlertTriangle, Server,
-  Globe, Wifi, Clock, Zap, Eye, EyeOff,
-  BarChart2, ArrowUp, ArrowDown, MessageSquare, Download,
-  ChevronDown, Play, Pause, Crown, Gauge
+  Globe, Wifi, Clock, Zap, UserX, UserCheck,
+  BarChart2, ArrowUp, MessageSquare, Download,
+  ChevronDown, Play, Pause, Crown, Gauge, HardDrive, KeyRound
 } from 'lucide-react';
 import { format } from 'date-fns';
 import { BrandMark } from '@/components/BrandMark';
+import { useAuthStore } from '@/lib/store';
+import { logoutRequest } from '@/lib/authApi';
 
 const BASE = import.meta.env.BASE_URL.replace(/\/$/, '');
-const ADMIN_SECRET = 'Vaibhav@2004';
 
-function apiFetch(path: string, opts?: RequestInit) {
+function apiFetch(path: string, opts: RequestInit = {}) {
+  const token = useAuthStore.getState().user?.token;
   return fetch(`${BASE}/api/admin${path}`, {
     ...opts,
-    headers: { 'x-admin-secret': ADMIN_SECRET, 'Content-Type': 'application/json', ...opts?.headers },
+    headers: {
+      Authorization: token ? `Bearer ${token}` : '',
+      'Content-Type': 'application/json',
+      ...(opts.headers as Record<string, string> | undefined),
+    },
   });
 }
 
-type Track = { videoId: string; title: string; thumbnail?: string; duration?: number };
-type Stats = { totalRooms: number; activeRooms: number; totalUsers: number; totalMessages: number };
+type Track = { videoId: string; title: string; thumbnail?: string; duration?: number; source?: string };
+type Stats = {
+  users: number; newUsersToday: number; newUsersWeek: number; activeToday: number; banned: number;
+  rooms: number; messages: number; onlineRooms: number; sharedSongs: number; db: boolean;
+};
 type Room = {
   id: string; name: string; inviteCode: string; memberCount: number; messageCount: number;
-  isPlaying: boolean; currentTrack: Track | null; createdAt: number; members: User[];
+  isPlaying: boolean; currentTrack: Track | null; createdAt: number; members: Member[];
   hostUserId?: string; queue?: Track[]; history?: Track[];
 };
-type User = { userId: string; displayName: string; avatarColor: string; joinedAt: number };
+type Member = { userId: string; displayName: string; avatarColor: string; joinedAt: number };
+type AdminUser = {
+  id: string; username: string; displayName: string; avatarColor: string; role: string;
+  provider?: string | null; email?: string | null; createdAt: number; lastLoginAt: number | null;
+  bannedAt: number | null; roomCount: number;
+};
 type Msg = {
   id: string; userId: string; displayName: string; avatarColor?: string; text: string;
   timestamp: number; isSystem?: boolean; roomName: string; inviteCode: string;
 };
-type ActivityEvent = { id: string; type: 'room_created' | 'room_deleted' | 'user_joined' | 'user_left' | 'track_played'; message: string; timestamp: number };
+type ActivityEvent = { id: string; type: 'room_created' | 'user_joined' | 'user_left' | 'track_played' | 'user_registered' | 'user_login'; message: string; timestamp: number };
 
 const TABS = [
   { id: 'dashboard', label: 'Dashboard', icon: LayoutDashboard },
@@ -45,16 +59,21 @@ const TABS = [
   { id: 'activity', label: 'Activity Log', icon: Activity },
 ];
 
-// Generate fake activity log from rooms/users data
-function buildActivity(rooms: Room[], users: User[]): ActivityEvent[] {
+function buildActivity(rooms: Room[], users: AdminUser[]): ActivityEvent[] {
   const events: ActivityEvent[] = [];
-  rooms.forEach(r => {
+  users.forEach((u) => {
+    events.push({ id: `reg-${u.id}`, type: 'user_registered', message: `${u.displayName} (@${u.username}) created an account`, timestamp: u.createdAt });
+    if (u.lastLoginAt) {
+      events.push({ id: `log-${u.id}`, type: 'user_login', message: `${u.displayName} signed in`, timestamp: u.lastLoginAt });
+    }
+  });
+  rooms.forEach((r) => {
     events.push({ id: `rc-${r.inviteCode}`, type: 'room_created', message: `Room "${r.name}" was created`, timestamp: r.createdAt });
     if (r.isPlaying && r.currentTrack) {
       events.push({ id: `tp-${r.inviteCode}`, type: 'track_played', message: `Now playing "${r.currentTrack.title?.slice(0, 40)}" in ${r.name}`, timestamp: Date.now() - Math.random() * 300000 });
     }
-    r.members.forEach(m => {
-      events.push({ id: `uj-${m.userId}`, type: 'user_joined', message: `${m.displayName} joined "${r.name}"`, timestamp: m.joinedAt });
+    r.members.forEach((m) => {
+      events.push({ id: `uj-${r.inviteCode}-${m.userId}`, type: 'user_joined', message: `${m.displayName} joined "${r.name}"`, timestamp: m.joinedAt });
     });
   });
   return events.sort((a, b) => b.timestamp - a.timestamp).slice(0, 60);
@@ -64,22 +83,25 @@ const EVENT_STYLES: Record<string, { color: string; icon: React.ElementType }> =
   room_created: { color: '#7c3aed', icon: Radio },
   room_deleted: { color: '#ef4444', icon: Trash2 },
   user_joined: { color: '#10b981', icon: Users },
-  user_left: { color: '#f59e0b', icon: ArrowDown },
+  user_left: { color: '#f59e0b', icon: ArrowUp },
   track_played: { color: '#ec4899', icon: Music2 },
+  user_registered: { color: '#06b6d4', icon: Shield },
+  user_login: { color: '#84cc16', icon: KeyRound },
 };
 
 export default function Admin() {
   const [, setLocation] = useLocation();
-  const [isAuthed, setIsAuthed] = useState(false);
-  const [password, setPassword] = useState('');
-  const [showPw, setShowPw] = useState(false);
+  const { user } = useAuthStore();
+  const isAdmin = user?.role === 'admin';
   const [tab, setTab] = useState('dashboard');
   const [stats, setStats] = useState<Stats | null>(null);
   const [rooms, setRooms] = useState<Room[]>([]);
-  const [users, setUsers] = useState<User[]>([]);
+  const [users, setUsers] = useState<AdminUser[]>([]);
   const [loading, setLoading] = useState(false);
+  const [denied, setDenied] = useState(false);
   const [search, setSearch] = useState('');
-  const [deleteConfirm, setDeleteConfirm] = useState<string | null>(null);
+  const [userScope, setUserScope] = useState<'all' | 'today' | 'banned'>('all');
+  const [confirmAction, setConfirmAction] = useState<{ kind: 'room' | 'user'; id: string; label: string } | null>(null);
   const [messages, setMessages] = useState<Msg[]>([]);
   const [msgRoom, setMsgRoom] = useState('all');
   const [showSystem, setShowSystem] = useState(true);
@@ -91,54 +113,70 @@ export default function Admin() {
   const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
   const loadAll = useCallback(async () => {
-    if (!isAuthed) return;
+    if (!isAdmin) return;
     setLoading(true);
     const t0 = performance.now();
     try {
+      const json = (res: Response) => (res.ok ? res.json() : null);
       const [s, r, u, m] = await Promise.all([
-        apiFetch('/stats').then(r => r.json()),
-        apiFetch('/rooms').then(r => r.json()),
-        apiFetch('/users').then(r => r.json()),
-        apiFetch('/messages?limit=500').then(r => r.json()),
+        apiFetch('/stats').then(json),
+        apiFetch('/rooms').then(json),
+        apiFetch('/users?limit=500').then(json),
+        apiFetch('/messages?limit=500').then(json),
       ]);
-      setStats(s);
-      setRooms(r.rooms || []);
-      setUsers(u.users || []);
-      setMessages(m.messages || []);
-      setPings(prev => [...prev, Math.round(performance.now() - t0)].slice(-24));
-      setLastSync(Date.now());
+      if (!s) {
+        setDenied(true);
+      } else {
+        setDenied(false);
+        setStats(s);
+        setRooms(r?.rooms || []);
+        setUsers(u?.users || []);
+        setMessages(m?.messages || []);
+        setPings(prev => [...prev, Math.round(performance.now() - t0)].slice(-24));
+        setLastSync(Date.now());
+      }
     } catch {}
     setLoading(false);
-  }, [isAuthed]);
+  }, [isAdmin]);
 
   useEffect(() => { loadAll(); }, [loadAll]);
 
   // Auto-refresh every 30s
   useEffect(() => {
-    if (!isAuthed || !autoRefresh) return;
+    if (!isAdmin || !autoRefresh) return;
     intervalRef.current = setInterval(loadAll, 30000);
     return () => { if (intervalRef.current) clearInterval(intervalRef.current); };
-  }, [isAuthed, autoRefresh, loadAll]);
+  }, [isAdmin, autoRefresh, loadAll]);
 
-  const handleLogin = (e: React.FormEvent) => {
-    e.preventDefault();
-    if (password === ADMIN_SECRET) setIsAuthed(true);
-    else alert('Wrong password!');
-  };
-
-  const handleDeleteRoom = async (inviteCode: string) => {
-    await apiFetch(`/rooms/${inviteCode}`, { method: 'DELETE' });
-    setDeleteConfirm(null);
+  const runUserAction = async (id: string, action: 'ban' | 'unban') => {
+    await apiFetch(`/users/${id}/${action}`, { method: 'POST' });
     loadAll();
   };
 
+  const handleConfirmAction = async () => {
+    if (!confirmAction) return;
+    if (confirmAction.kind === 'room') {
+      await apiFetch(`/rooms/${encodeURIComponent(confirmAction.id)}`, { method: 'DELETE' });
+    } else if (confirmAction.label === 'ban') {
+      await apiFetch(`/users/${encodeURIComponent(confirmAction.id)}/ban`, { method: 'POST' });
+    } else {
+      await apiFetch(`/users/${encodeURIComponent(confirmAction.id)}`, { method: 'DELETE' });
+    }
+    setConfirmAction(null);
+    loadAll();
+  };
+
+  const startOfToday = new Date(new Date().setHours(0, 0, 0, 0)).getTime();
   const filteredRooms = rooms.filter(r =>
     r.name.toLowerCase().includes(search.toLowerCase()) ||
     r.inviteCode.toLowerCase().includes(search.toLowerCase())
   );
-  const filteredUsers = users.filter(u =>
-    u.displayName.toLowerCase().includes(search.toLowerCase())
-  );
+  const filteredUsers = users.filter(u => {
+    if (userScope === 'banned' && !u.bannedAt) return false;
+    if (userScope === 'today' && u.createdAt < startOfToday) return false;
+    const q = search.trim().toLowerCase();
+    return !q || u.displayName.toLowerCase().includes(q) || String(u.username || '').toLowerCase().includes(q);
+  });
   const filteredMessages = messages.filter(m => {
     if (!showSystem && m.isSystem) return false;
     if (msgRoom !== 'all' && m.inviteCode !== msgRoom) return false;
@@ -152,6 +190,8 @@ export default function Admin() {
   const activity = buildActivity(rooms, users);
   const avgPing = pings.length ? Math.round(pings.reduce((a, b) => a + b, 0) / pings.length) : 0;
   const liveTracks = rooms.filter(r => r.isPlaying && r.currentTrack);
+  const recentSignups = [...users].sort((a, b) => b.createdAt - a.createdAt).slice(0, 6);
+  const onlineUserIds = new Set(rooms.flatMap(r => r.members.map(m => m.userId)));
   const sessionStr = (() => {
     const secs = Math.max(0, Math.floor((Date.now() - sessionStart) / 1000));
     const h = Math.floor(secs / 3600);
@@ -173,8 +213,8 @@ export default function Admin() {
     URL.revokeObjectURL(url);
   };
 
-  // ── Login screen ──
-  if (!isAuthed) {
+  // ── Not authorized — admin comes in through the normal login page ──
+  if (!isAdmin) {
     return (
       <div className="min-h-screen flex items-center justify-center p-4 bg-[#06040f] relative overflow-hidden">
         <div className="absolute inset-0 pointer-events-none">
@@ -190,40 +230,30 @@ export default function Admin() {
             <div className="w-16 h-16 rounded-2xl bg-gradient-to-tr from-primary to-accent flex items-center justify-center mx-auto mb-4 shadow-xl shadow-primary/30">
               <Shield className="w-8 h-8 text-white" />
             </div>
-            <h1 className="text-2xl font-black text-white">Admin Panel</h1>
-            <p className="text-white/40 text-sm mt-1">SyncBeat · Authorized Access Only</p>
+            <h1 className="text-2xl font-black text-white">Admin Access Only</h1>
+            <p className="text-white/40 text-sm mt-1">
+              {denied
+                ? 'Your session is no longer an admin session. Please sign in again.'
+                : 'Sign in with the admin account to open this panel.'}
+            </p>
           </div>
-          <form onSubmit={handleLogin} className="glass-panel rounded-2xl p-6 space-y-4">
-            <div>
-              <label className="text-xs text-white/40 font-semibold uppercase tracking-wider block mb-2">Admin Password</label>
-              <div className="relative">
-                <input
-                  type={showPw ? 'text' : 'password'}
-                  value={password}
-                  onChange={e => setPassword(e.target.value)}
-                  placeholder="Enter admin password..."
-                  className="w-full bg-white/5 border border-white/10 rounded-xl px-4 py-3 pr-11 text-sm text-white placeholder:text-white/25 outline-none focus:border-primary/50 transition-all"
-                  autoFocus
-                />
-                <button
-                  type="button"
-                  onClick={() => setShowPw(p => !p)}
-                  className="absolute right-3 top-1/2 -translate-y-1/2 text-white/30 hover:text-white/60 transition-colors"
-                >
-                  {showPw ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
-                </button>
-              </div>
-            </div>
+          <div className="glass-panel rounded-2xl p-6 space-y-3">
             <button
-              type="submit"
+              onClick={() => setLocation('/login')}
               className="w-full py-3 rounded-xl bg-gradient-to-r from-primary to-accent text-white font-bold hover:opacity-90 transition-all"
             >
-              Access Admin Panel
+              Go to Sign In
             </button>
-            <button type="button" onClick={() => setLocation('/')} className="w-full py-2 text-sm text-white/30 hover:text-white/60 transition-colors">
+            <button
+              onClick={async () => { await logoutRequest(); setLocation('/login'); }}
+              className="w-full flex items-center justify-center gap-2 py-2.5 rounded-xl bg-white/5 hover:bg-white/10 text-sm font-semibold text-white/60 transition-all"
+            >
+              <LogOut className="w-3.5 h-3.5" /> Sign out of this account
+            </button>
+            <button onClick={() => setLocation('/')} className="w-full py-2 text-sm text-white/30 hover:text-white/60 transition-colors">
               ← Back to SyncBeat
             </button>
-          </form>
+          </div>
         </motion.div>
       </div>
     );
@@ -318,7 +348,7 @@ export default function Admin() {
             <RefreshCw className={`w-3.5 h-3.5 ${loading ? 'animate-spin' : ''}`} /> Refresh Data
           </button>
           <button
-            onClick={() => setIsAuthed(false)}
+            onClick={async () => { await logoutRequest(); setLocation('/login'); }}
             className="w-full flex items-center gap-2 px-3 py-2.5 rounded-xl text-xs font-semibold text-white/40 hover:text-red-400 hover:bg-red-500/5 transition-all"
           >
             <LogOut className="w-3.5 h-3.5" /> Sign Out
@@ -341,26 +371,69 @@ export default function Admin() {
               {/* Stat cards */}
               <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 mb-8">
                 {[
-                  { label: 'Total Rooms', value: stats?.totalRooms ?? 0, icon: Radio, color: '#7c3aed', bg: 'from-violet-600/15 to-transparent', note: `${(stats?.totalRooms ?? 0) - (stats?.activeRooms ?? 0)} idle` },
-                  { label: 'Active Rooms', value: stats?.activeRooms ?? 0, icon: Activity, color: '#10b981', bg: 'from-emerald-600/15 to-transparent', note: `${liveTracks.length} playing` },
-                  { label: 'Online Users', value: stats?.totalUsers ?? 0, icon: Users, color: '#db2777', bg: 'from-pink-600/15 to-transparent', note: `${stats && stats.activeRooms ? (stats.totalUsers / stats.activeRooms).toFixed(1) : '0'} per room` },
-                  { label: 'Messages Sent', value: stats?.totalMessages ?? 0, icon: TrendingUp, color: '#f59e0b', bg: 'from-amber-600/15 to-transparent', note: `${stats && stats.totalUsers ? Math.round(stats.totalMessages / stats.totalUsers) : 0} per user` },
+                  { label: 'Registered Accounts', value: stats?.users ?? 0, icon: Users, color: '#db2777', bg: 'from-pink-600/15 to-transparent', note: `${stats?.newUsersWeek ?? 0} joined this week` },
+                  { label: 'New Logins Today', value: stats?.activeToday ?? 0, icon: KeyRound, color: '#0ea5e9', bg: 'from-sky-600/15 to-transparent', note: `${stats?.newUsersToday ?? 0} new accounts today` },
+                  { label: 'Rooms Created', value: stats?.rooms ?? 0, icon: Radio, color: '#7c3aed', bg: 'from-violet-600/15 to-transparent', note: `${stats?.onlineRooms ?? 0} live right now` },
+                  { label: 'Messages Saved', value: stats?.messages ?? 0, icon: TrendingUp, color: '#f59e0b', bg: 'from-amber-600/15 to-transparent', note: `${stats && stats.users ? Math.round(stats.messages / stats.users) : 0} per account` },
+                  { label: 'Shared Device Songs', value: stats?.sharedSongs ?? 0, icon: Music2, color: '#00d4d4', bg: 'from-cyan-600/15 to-transparent', note: 'Uploaded from phones' },
+                  { label: 'Banned Accounts', value: stats?.banned ?? 0, icon: UserX, color: '#ef4444', bg: 'from-red-600/15 to-transparent', note: stats?.banned ? 'Action taken' : 'Nobody blocked' },
+                  { label: 'Live Listening', value: liveTracks.length, icon: Activity, color: '#10b981', bg: 'from-emerald-600/15 to-transparent', note: 'Songs playing now' },
+                  { label: 'Database', value: 0, icon: HardDrive, color: '#64748b', bg: 'from-slate-600/15 to-transparent', note: stats?.db ? 'PostgreSQL connected' : 'not connected' },
                 ].map((stat, i) => (
                   <motion.div
                     key={stat.label}
                     initial={{ opacity: 0, y: 16 }}
                     animate={{ opacity: 1, y: 0 }}
-                    transition={{ delay: i * 0.08 }}
+                    transition={{ delay: i * 0.05 }}
                     className={`rounded-2xl p-5 border border-white/8 bg-gradient-to-br ${stat.bg} backdrop-blur-sm relative overflow-hidden`}
                   >
                     <div className="absolute top-3 right-3 w-10 h-10 rounded-xl flex items-center justify-center" style={{ backgroundColor: `${stat.color}25` }}>
                       <stat.icon className="w-5 h-5" style={{ color: stat.color }} />
                     </div>
-                    <p className="text-3xl font-black mb-1">{stat.value.toLocaleString()}</p>
+                    <p className="text-3xl font-black mb-1">{stat.icon === HardDrive ? (stats?.db ? 'ON' : 'OFF') : stat.value.toLocaleString()}</p>
                     <p className="text-xs text-white/40 font-medium">{stat.label}</p>
                     <span className="text-[10px] mt-2 inline-block px-2 py-0.5 rounded-full bg-white/5 text-white/30">{stat.note}</span>
                   </motion.div>
                 ))}
+              </div>
+
+              {/* Fresh registrations */}
+              <div className="rounded-2xl border border-white/8 overflow-hidden mb-6">
+                <div className="px-5 py-4 border-b border-white/6 flex items-center justify-between">
+                  <div className="flex items-center gap-2">
+                    <KeyRound className="w-4 h-4 text-cyan-400" />
+                    <h2 className="font-bold text-sm">Who Registered Recently</h2>
+                  </div>
+                  <button onClick={() => setTab('users')} className="text-xs text-primary hover:text-primary/80 flex items-center gap-1">
+                    Manage Users <ChevronRight className="w-3 h-3" />
+                  </button>
+                </div>
+                {recentSignups.length === 0 ? (
+                  <div className="py-8 text-center text-white/25 text-sm">No accounts registered yet</div>
+                ) : (
+                  <div className="divide-y divide-white/5">
+                    {recentSignups.map(u => (
+                      <div key={u.id} className="px-5 py-3 flex items-center gap-3 hover:bg-white/[0.03] transition-colors">
+                        <div className="w-8 h-8 rounded-lg flex items-center justify-center text-[11px] font-bold text-white shrink-0" style={{ backgroundColor: u.avatarColor }}>
+                          {(u.displayName || u.username || '?').charAt(0).toUpperCase()}
+                        </div>
+                        <div className="min-w-0 flex-1">
+                          <p className="text-sm font-semibold truncate">
+                            {u.displayName}
+                            {u.role === 'admin' && <span className="ml-2 text-[9px] px-1.5 py-0.5 rounded bg-amber-500/15 text-amber-300 border border-amber-500/25 font-bold uppercase">admin</span>}
+                          </p>
+                          <p className="text-[11px] text-white/30 truncate">@{u.username}</p>
+                        </div>
+                        <div className="text-right shrink-0">
+                          <p className="text-[11px] text-white/45">{format(new Date(u.createdAt), 'd MMM · h:mm a')}</p>
+                          <p className="text-[10px] text-white/25">
+                            {u.bannedAt ? 'Banned' : u.lastLoginAt ? `Last login ${format(new Date(u.lastLoginAt), 'd MMM, HH:mm')}` : 'Never signed in'}
+                          </p>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )}
               </div>
 
               {/* Real API health strip */}
@@ -418,7 +491,7 @@ export default function Admin() {
                         key={room.inviteCode}
                         className="flex items-center gap-3 pr-4 pl-1 py-1 rounded-xl bg-white/[0.03] border border-white/8 shrink-0"
                       >
-                        <img src={room.currentTrack?.thumbnail} alt="" className="w-9 h-9 rounded-lg object-cover" />
+                        <img src={room.currentTrack?.thumbnail || '/brand-icon-192.png'} alt="" className="w-9 h-9 rounded-lg object-cover" />
                         <div className="max-w-[190px]">
                           <p className="text-[11px] font-semibold truncate">{room.currentTrack?.title}</p>
                           <p className="text-[10px] text-white/30 truncate">{room.name} · {room.memberCount} listening</p>
@@ -520,7 +593,7 @@ export default function Admin() {
                         </div>
                         {room.currentTrack && (
                           <div className="mt-2 flex items-center gap-2">
-                            <img src={room.currentTrack.thumbnail} className="w-8 h-8 rounded object-cover" alt="" />
+                            <img src={room.currentTrack.thumbnail || '/brand-icon-192.png'} className="w-8 h-8 rounded object-cover" alt="" />
                             <p className="text-xs text-white/50 truncate max-w-[300px]">{room.currentTrack.title}</p>
                           </div>
                         )}
@@ -549,7 +622,7 @@ export default function Admin() {
                           <ChevronDown className={`w-4 h-4 transition-transform ${isOpen ? 'rotate-180 text-cyan-300' : ''}`} />
                         </button>
                         <button
-                          onClick={() => setDeleteConfirm(room.inviteCode)}
+                          onClick={() => setConfirmAction({ kind: 'room', id: room.inviteCode, label: 'delete' })}
                           className="p-2 rounded-xl text-white/25 hover:text-red-400 hover:bg-red-500/10 transition-all"
                           title="Delete room"
                         >
@@ -606,7 +679,7 @@ export default function Admin() {
                                 <div className="space-y-1.5 max-h-[168px] overflow-y-auto pr-1">
                                   {queue.map((t, qi) => (
                                     <div key={`${t.videoId}-${qi}`} className="flex items-center gap-2">
-                                      <img src={t.thumbnail} alt="" className="w-7 h-7 rounded object-cover shrink-0" />
+                                      <img src={t.thumbnail || '/brand-icon-192.png'} alt="" className="w-7 h-7 rounded object-cover shrink-0" />
                                       <span className="text-[11px] text-white/55 truncate">{t.title}</span>
                                     </div>
                                   ))}
@@ -645,49 +718,125 @@ export default function Admin() {
           {/* ── USERS ── */}
           {tab === 'users' && (
             <motion.div initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }} key="users">
-              <div className="flex items-center justify-between mb-6">
+              <div className="flex flex-wrap items-end justify-between gap-3 mb-5">
                 <div>
-                  <h1 className="text-2xl font-black">Active Users</h1>
-                  <p className="text-white/40 text-sm mt-1">{users.length} users currently online</p>
+                  <h1 className="text-2xl font-black">Registered Users</h1>
+                  <p className="text-white/40 text-sm mt-1">
+                    {users.length} accounts · {stats?.newUsersToday ?? 0} created today · {onlineUserIds.size} listening in a room
+                  </p>
                 </div>
                 <div className="relative">
                   <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-white/30" />
                   <input
                     type="text"
-                    placeholder="Search users..."
+                    placeholder="Search name or username..."
                     value={search}
                     onChange={e => setSearch(e.target.value)}
-                    className="bg-white/5 border border-white/10 rounded-xl pl-9 pr-4 py-2 text-sm outline-none focus:border-primary/40 w-48 transition-all placeholder:text-white/20"
+                    className="bg-white/5 border border-white/10 rounded-xl pl-9 pr-4 py-2 text-sm outline-none focus:border-primary/40 w-56 transition-all placeholder:text-white/20"
                   />
                 </div>
               </div>
 
+              <div className="flex flex-wrap gap-2 mb-5">
+                {([
+                  { id: 'all', label: `All accounts (${users.length})` },
+                  { id: 'today', label: `Registered today (${stats?.newUsersToday ?? 0})` },
+                  { id: 'banned', label: `Banned (${stats?.banned ?? 0})` },
+                ] as const).map(chip => (
+                  <button
+                    key={chip.id}
+                    onClick={() => setUserScope(chip.id)}
+                    className={`text-[11px] px-3 py-1.5 rounded-full border font-semibold transition-all ${
+                      userScope === chip.id
+                        ? 'bg-cyan-500/15 border-cyan-400/35 text-cyan-200'
+                        : 'bg-white/[0.02] border-white/8 text-white/35 hover:text-white'
+                    }`}
+                  >
+                    {chip.label}
+                  </button>
+                ))}
+              </div>
+
               {filteredUsers.length === 0 ? (
-                <div className="text-center py-16 text-white/25 text-sm">No users online right now</div>
+                <div className="text-center py-16 text-white/25 text-sm">No accounts match this view</div>
               ) : (
-                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
-                  {filteredUsers.map((u, i) => (
-                    <motion.div
-                      key={u.userId}
-                      initial={{ opacity: 0, scale: 0.95 }}
-                      animate={{ opacity: 1, scale: 1 }}
-                      transition={{ delay: i * 0.04 }}
-                      className="flex items-center gap-3 p-4 rounded-2xl border border-white/8 bg-white/[0.02] hover:border-white/12 transition-all"
-                    >
-                      <div
-                        className="w-11 h-11 rounded-xl flex items-center justify-center text-white font-black text-lg shrink-0 shadow-lg"
-                        style={{ backgroundColor: u.avatarColor }}
+                <div className="rounded-2xl border border-white/8 overflow-hidden divide-y divide-white/5">
+                  {filteredUsers.map((u, i) => {
+                    const online = onlineUserIds.has(u.id);
+                    const isSelf = u.id === user?.userId;
+                    return (
+                      <motion.div
+                        key={u.id}
+                        initial={{ opacity: 0, y: 6 }}
+                        animate={{ opacity: 1, y: 0 }}
+                        transition={{ delay: Math.min(i * 0.02, 0.3) }}
+                        className="flex flex-wrap items-center gap-3 px-4 py-3 hover:bg-white/[0.03] transition-colors"
                       >
-                        {u.displayName.charAt(0).toUpperCase()}
-                      </div>
-                      <div className="flex-1 min-w-0">
-                        <p className="font-semibold text-sm truncate">{u.displayName}</p>
-                        <p className="text-[10px] text-white/30 mt-0.5 font-mono truncate">{u.userId.slice(0, 12)}...</p>
-                        <p className="text-[10px] text-white/20 mt-0.5">Joined {format(new Date(u.joinedAt), 'h:mm a')}</p>
-                      </div>
-                      <div className="w-2 h-2 bg-green-400 rounded-full shrink-0 animate-pulse" title="Online" />
-                    </motion.div>
-                  ))}
+                        <div className="relative shrink-0">
+                          <div
+                            className="w-10 h-10 rounded-xl flex items-center justify-center text-white font-black shrink-0"
+                            style={{ backgroundColor: u.avatarColor }}
+                          >
+                            {(u.displayName || u.username || '?').charAt(0).toUpperCase()}
+                          </div>
+                          {online && <span className="absolute -bottom-0.5 -right-0.5 w-2.5 h-2.5 rounded-full bg-green-400 ring-2 ring-[#06040f]" />}
+                        </div>
+
+                        <div className="min-w-0 flex-1">
+                          <p className="font-semibold text-sm truncate flex items-center gap-2">
+                            {u.displayName}
+                            {u.role === 'admin' && (
+                              <span className="text-[9px] px-1.5 py-0.5 rounded bg-amber-500/15 text-amber-300 border border-amber-500/25 font-bold uppercase flex items-center gap-1">
+                                <Crown className="w-2.5 h-2.5" /> admin
+                              </span>
+                            )}
+                            {isSelf && <span className="text-[9px] px-1.5 py-0.5 rounded bg-white/8 text-white/40 font-bold uppercase">you</span>}
+                            {u.bannedAt && (
+                              <span className="text-[9px] px-1.5 py-0.5 rounded bg-red-500/15 text-red-300 border border-red-500/25 font-bold uppercase">banned</span>
+                            )}
+                          </p>
+                          <p className="text-[11px] text-white/30 truncate">@{u.username} · {u.roomCount} {u.roomCount === 1 ? 'room' : 'rooms'} joined</p>
+                        </div>
+
+                        <div className="text-right shrink-0 hidden sm:block">
+                          <p className="text-[11px] text-white/45">Joined {format(new Date(u.createdAt), 'd MMM yyyy, h:mm a')}</p>
+                          <p className="text-[10px] text-white/25">
+                            {u.lastLoginAt ? `Last login ${format(new Date(u.lastLoginAt), 'd MMM, HH:mm')}` : 'Never signed in'}
+                          </p>
+                        </div>
+
+                        <div className="flex items-center gap-1 shrink-0">
+                          {u.role !== 'admin' && (u.bannedAt ? (
+                            <button
+                              onClick={() => runUserAction(u.id, 'unban')}
+                              className="flex items-center gap-1 px-2.5 py-1.5 rounded-lg text-[10px] font-bold bg-emerald-500/10 text-emerald-400 border border-emerald-500/25 hover:bg-emerald-500/20 transition-all"
+                              title="Allow this account to sign in again"
+                            >
+                              <UserCheck className="w-3 h-3" /> Unban
+                            </button>
+                          ) : (
+                            <button
+                              onClick={() => setConfirmAction({ kind: 'user', id: u.id, label: 'ban' })}
+                              disabled={isSelf}
+                              className="flex items-center gap-1 px-2.5 py-1.5 rounded-lg text-[10px] font-bold bg-amber-500/10 text-amber-400 border border-amber-500/25 hover:bg-amber-500/20 transition-all disabled:opacity-30"
+                              title="Block this account from signing in"
+                            >
+                              <UserX className="w-3 h-3" /> Ban
+                            </button>
+                          ))}
+                          {u.role !== 'admin' && (
+                            <button
+                              onClick={() => setConfirmAction({ kind: 'user', id: u.id, label: 'delete' })}
+                              className="p-1.5 rounded-lg text-white/25 hover:text-red-400 hover:bg-red-500/10 transition-all"
+                              title="Delete account permanently"
+                            >
+                              <Trash2 className="w-4 h-4" />
+                            </button>
+                          )}
+                        </div>
+                      </motion.div>
+                    );
+                  })}
                 </div>
               )}
             </motion.div>
@@ -815,8 +964,8 @@ export default function Admin() {
                   <div className="space-y-4">
                     {[
                       { label: 'API round-trip', value: avgPing, color: '#10b981', max: 300, unit: ' ms' },
-                      { label: 'Room occupancy', value: stats && stats.totalRooms ? Math.round((stats.activeRooms / stats.totalRooms) * 100) : 0, color: '#7c3aed', max: 100, unit: '%' },
-                      { label: 'Chat buffer used', value: messages.length, color: '#0ea5e9', max: 500, unit: ' msgs' },
+                      { label: 'Rooms live now', value: stats?.rooms ? Math.round(((stats.onlineRooms || 0) / stats.rooms) * 100) : 0, color: '#7c3aed', max: 100, unit: '%' },
+                      { label: 'Messages loaded', value: messages.length, color: '#0ea5e9', max: 500, unit: ' msgs' },
                     ].map(m => (
                       <div key={m.label}>
                         <div className="flex justify-between text-xs mb-1.5">
@@ -864,11 +1013,12 @@ export default function Admin() {
                   <div className="space-y-3">
                     {[
                       { label: 'Environment', value: 'Node.js / Express', icon: Server },
+                      { label: 'Signed in as', value: `@${user?.username || 'admin'}`, icon: Shield },
                       { label: 'Panel session', value: sessionStr, icon: Clock },
                       { label: 'Last sync', value: lastSync ? format(new Date(lastSync), 'HH:mm:ss') : '—', icon: RefreshCw },
                       { label: 'Realtime', value: 'WebSocket · /api/ws', icon: Wifi },
-                      { label: 'Transport', value: 'In-Memory Store', icon: BarChart2 },
-                      { label: 'Admin', value: 'Vaibhav', icon: Shield },
+                      { label: 'Storage', value: stats?.db ? 'PostgreSQL · rooms, chat, songs' : 'In-memory only', icon: BarChart2 },
+                      { label: 'Passwords', value: 'scrypt hashed · 30-day sessions', icon: KeyRound },
                     ].map(row => (
                       <div key={row.label} className="flex items-center gap-3 py-2 border-b border-white/4 last:border-0">
                         <div className="w-7 h-7 rounded-lg bg-white/5 flex items-center justify-center shrink-0">
@@ -890,11 +1040,14 @@ export default function Admin() {
                 </div>
                 <div className="divide-y divide-white/5">
                   {[
-                    { method: 'GET', path: '/api/admin/stats', desc: 'Overall dashboard statistics' },
+                    { method: 'GET', path: '/api/admin/stats', desc: 'Dashboard statistics from PostgreSQL' },
+                    { method: 'GET', path: '/api/admin/users', desc: 'Every registered account, newest first' },
+                    { method: 'POST', path: '/api/admin/users/:id/ban', desc: 'Block an account and kill its sessions' },
+                    { method: 'POST', path: '/api/admin/users/:id/unban', desc: 'Let a banned account sign in again' },
+                    { method: 'DELETE', path: '/api/admin/users/:id', desc: 'Permanently remove an account' },
                     { method: 'GET', path: '/api/admin/rooms', desc: 'List all rooms with members' },
-                    { method: 'DELETE', path: '/api/admin/rooms/:code', desc: 'Delete a room by invite code' },
-                    { method: 'GET', path: '/api/admin/users', desc: 'List all active users' },
-                    { method: 'GET', path: '/api/admin/messages', desc: 'Fetch messages (all/per-room)' },
+                    { method: 'DELETE', path: '/api/admin/rooms/:code', desc: 'Delete a room, its chat and shared songs' },
+                    { method: 'GET', path: '/api/admin/messages', desc: 'Search saved chat across all rooms' },
                   ].map(ep => (
                     <div key={ep.path} className="px-5 py-3 flex items-center gap-4 hover:bg-white/2 transition-colors">
                       <span className={`text-[10px] font-black px-2 py-0.5 rounded font-mono shrink-0 ${
@@ -991,7 +1144,7 @@ export default function Admin() {
 
       {/* Delete confirmation modal */}
       <AnimatePresence>
-        {deleteConfirm && (
+        {confirmAction && (
           <motion.div
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
@@ -1004,17 +1157,35 @@ export default function Admin() {
               exit={{ scale: 0.9, opacity: 0 }}
               className="glass-panel rounded-2xl p-6 max-w-sm w-full"
             >
-              <div className="w-12 h-12 rounded-xl bg-red-500/15 border border-red-500/20 flex items-center justify-center mx-auto mb-4">
-                <AlertTriangle className="w-6 h-6 text-red-400" />
+              <div className={`w-12 h-12 rounded-xl border flex items-center justify-center mx-auto mb-4 ${
+                confirmAction.label === 'ban' ? 'bg-amber-500/15 border-amber-500/20' : 'bg-red-500/15 border-red-500/20'
+              }`}>
+                <AlertTriangle className={`w-6 h-6 ${confirmAction.label === 'ban' ? 'text-amber-400' : 'text-red-400'}`} />
               </div>
-              <h3 className="font-black text-lg text-center mb-1">Delete Room?</h3>
-              <p className="text-sm text-white/40 text-center mb-6">All members will be disconnected and chat history will be lost.</p>
+              <h3 className="font-black text-lg text-center mb-1">
+                {confirmAction.kind === 'room'
+                  ? 'Delete Room?'
+                  : confirmAction.label === 'ban'
+                    ? 'Ban This User?'
+                    : 'Delete User Account?'}
+              </h3>
+              <p className="text-sm text-white/40 text-center mb-6">
+                {confirmAction.kind === 'room'
+                  ? 'All members will be disconnected and the room, its chat and shared songs are removed.'
+                  : confirmAction.label === 'ban'
+                    ? 'They will be signed out everywhere and cannot log in again until you unban them.'
+                    : 'This removes the account, its sessions and its room history. It cannot be undone.'}
+              </p>
               <div className="flex gap-3">
-                <button onClick={() => setDeleteConfirm(null)} className="flex-1 py-2.5 rounded-xl bg-white/5 hover:bg-white/10 text-sm font-semibold transition-all">
+                <button onClick={() => setConfirmAction(null)} className="flex-1 py-2.5 rounded-xl bg-white/5 hover:bg-white/10 text-sm font-semibold transition-all">
                   Cancel
                 </button>
-                <button onClick={() => handleDeleteRoom(deleteConfirm)} className="flex-1 py-2.5 rounded-xl bg-red-500/20 hover:bg-red-500/30 text-red-400 text-sm font-bold border border-red-500/20 transition-all">
-                  Delete
+                <button onClick={handleConfirmAction} className={`flex-1 py-2.5 rounded-xl text-sm font-bold border transition-all ${
+                  confirmAction.label === 'ban'
+                    ? 'bg-amber-500/20 hover:bg-amber-500/30 text-amber-400 border-amber-500/20'
+                    : 'bg-red-500/20 hover:bg-red-500/30 text-red-400 border-red-500/20'
+                }`}>
+                  {confirmAction.kind === 'room' ? 'Delete Room' : confirmAction.label === 'ban' ? 'Ban User' : 'Delete User'}
                 </button>
               </div>
             </motion.div>

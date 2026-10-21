@@ -9,6 +9,20 @@ export type BodyType<T> = T;
 const NO_BODY_STATUS = new Set([204, 205, 304]);
 const DEFAULT_JSON_ACCEPT = "application/json, application/problem+json";
 
+// The website's zustand-persisted session lives under this key; every request
+// made through this client carries its bearer token.
+const SESSION_STORAGE_KEY = "lt_user";
+
+function sessionToken(): string | null {
+  try {
+    const raw = localStorage.getItem(SESSION_STORAGE_KEY);
+    const token = raw ? JSON.parse(raw)?.state?.user?.token : null;
+    return typeof token === "string" ? token : null;
+  } catch {
+    return null;
+  }
+}
+
 function isRequest(input: RequestInfo | URL): input is Request {
   return typeof Request !== "undefined" && input instanceof Request;
 }
@@ -295,6 +309,11 @@ export async function customFetch<T = unknown>(
 
   if (responseType === "json" && !headers.has("accept")) {
     headers.set("accept", DEFAULT_JSON_ACCEPT);
+  }
+
+  const token = sessionToken();
+  if (token && !headers.has("authorization")) {
+    headers.set("authorization", `Bearer ${token}`);
   }
 
   const requestInfo = { method, url: resolveUrl(input) };

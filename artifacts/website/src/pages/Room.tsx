@@ -1,8 +1,9 @@
 import React, { useState, useEffect, useRef, useCallback, useMemo, memo } from 'react';
 import { useRoute, useLocation } from 'wouter';
-import { useGetRoom, type Room, type Track } from '@workspace/api-client-react';
+import { useGetRoom, type Track } from '@workspace/api-client-react';
 import { useAuthStore, useRecentRoomsStore } from '@/lib/store';
-import { useWebSocket, fireOfflineTrackNotification } from '@/hooks/use-websocket';
+import { authFetch, mediaStreamUrl } from '@/lib/authApi';
+import { useWebSocket, fireOfflineTrackNotification, type RoomState, type RoomTrack } from '@/hooks/use-websocket';
 import { YouTubePlayer, type PlayerControls } from '@/components/player/YouTubePlayer';
 import { backgroundAudioManager } from '@/lib/backgroundAudioManager';
 import {
@@ -127,6 +128,20 @@ type SearchResult = {
   channel: string;
 };
 
+/** A song chosen from this device. `mediaId` is set once it has been uploaded for the room. */
+type DeviceFile = {
+  id?: string;
+  name: string;
+  url: string;
+  duration?: number;
+  mediaId?: string;
+  size?: number;
+  blob?: Blob;
+  mime?: string;
+};
+
+const MAX_DEVICE_SONG_BYTES = 10 * 1024 * 1024;
+
 function formatDuration(ms: number): string {
   if (!ms) return '';
   const secs = Math.floor(ms / 1000);
@@ -167,10 +182,10 @@ const INSTA_FALLBACK: InstaSong[][] = [
 const MUSIC_APPS = [
   {
     id: 'device',
-    name: 'Mera Mobile Device',
+    name: 'Device Song',
     emoji: '📱',
     color: '#00d4d4',
-    desc: 'Phone Storage / Files app se audio aur MP3 songs select karein',
+    desc: 'Select audio and MP3 songs from your phone storage — the whole room hears them',
     songs: [] as Array<{ title: string; artist: string; videoId: string; thumbnail: string; duration: number }>,
   },
 ];
@@ -191,7 +206,7 @@ export default function RoomPage() {
   const [, params] = useRoute('/room/:inviteCode');
   const inviteCode = params?.inviteCode;
   const [, setLocation] = useLocation();
-  const { user, setUser } = useAuthStore();
+  const { user } = useAuthStore();
   const { addRoom } = useRecentRoomsStore();
 
   const [query, setQuery] = useState('');
@@ -201,6 +216,7 @@ export default function RoomPage() {
   const [chatInput, setChatInput] = useState('');
   const [copied, setCopied] = useState(false);
   const [showChat, setShowChat] = useState(true); // Mobile overlay toggle
+  const [showMembers, setShowMembers] = useState(false);
   const [sidebarTab, setSidebarTab] = useState<'chat' | 'spotify'>('chat');
   const [trendingSongs, setTrendingSongs] = useState<SearchResult[]>([]);
   const [syncNote, setSyncNote] = useState<string | null>(null);
@@ -252,20 +268,22 @@ export default function RoomPage() {
   const [importStatus, setImportStatus] = useState<'idle' | 'analyzing' | 'matching' | 'queueing' | 'success'>('idle');
   const [importProgress, setImportProgress] = useState(0);
 
-  // Local playlist state (Persisted in IndexedDB for 100% offline playback)
-  const [localFiles, setLocalFiles] = useState<{ id?: string; name: string; url: string; duration?: number }[]>([]);
-  const [localPlaying, setLocalPlaying] = useState<number | null>(null);
+  // Device Songs: kept in IndexedDB so they play with no internet, and uploaded to the
+  // room so every member hears the same file.
+  const [localFiles, setLocalFiles] = useState<DeviceFile[]>([]);
   const [localAudioEl] = useState(() => (typeof Audio !== 'undefined' ? new Audio() : null));
-  const [isLocalPaused, setIsLocalPaused] = useState(false);
+  const [deviceBusy, setDeviceBusy] = useState<string | null>(null);
+  const [deviceNote, setDeviceNote] = useState<string | null>(null);
   const localFileInputRef = useRef<HTMLInputElement>(null);
   const playerControlRef = useRef<PlayerControls | null>(null);
 
   const chatScrollRef = useRef<HTMLDivElement>(null);
   const searchRef = useRef<HTMLDivElement>(null);
+  const membersRef = useRef<HTMLDivElement>(null);
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const playerGetTimeRef = useRef<(() => number) | null>(null);
 
-  // Automatically load all offline saved songs from IndexedDB on startup ("bina net ke chalega")
+  // Automatically load all offline saved songs from IndexedDB on startup
   useEffect(() => {
     getAllOfflineSongs()
       .then((saved) => {
@@ -275,6 +293,9 @@ export default function RoomPage() {
               id: s.id,
               name: s.name,
               url: s.url || '',
+              size: s.size,
+              blob: s.blob,
+              mime: s.type,
             }))
           );
         }
@@ -302,22 +323,29 @@ export default function RoomPage() {
     send,
   } = useWebSocket(inviteCode);
 
-  const fallbackRoom = useMemo<Room>(() => ({
+  const fallbackRoom = useMemo<RoomState>(() => ({
     id: inviteCode || 'room',
     name: 'Listening Room',
     inviteCode: inviteCode || '',
     hostUserId: user?.userId || '',
     memberCount: members.length || 1,
-    currentTrack: undefined,
+    currentTrack: null,
+    queue: [],
+    history: [],
     isPlaying: false,
     currentTime: 0,
   }), [inviteCode, user?.userId, members.length]);
 
-  const activeRoom: Room = (room || initialRoom || fallbackRoom) as Room;
+  const activeRoom = (room || (initialRoom as unknown as RoomState) || fallbackRoom) as RoomState;
   const isHost = activeRoom?.hostUserId === user?.userId;
   // Server closes the socket with this message when the room id no longer resolves,
   // which is the one case where retrying sync is pointless instead of just slow.
   const roomGone = !!wsError && /room not found/i.test(wsError);
+
+  // A Device Song is any track whose bytes came from a member's phone instead of YouTube
+  const deviceTrack = activeRoom.currentTrack?.source === 'device' ? activeRoom.currentTrack : null;
+  const deviceMediaId = deviceTrack?.mediaId || '';
+  const deviceSrcRef = useRef<string>('');
 
   // Room palette drifts to match whatever is playing
   const moodHue = useMemo(() => moodHueFromTitle(activeRoom.currentTrack?.title), [activeRoom.currentTrack?.title]);
@@ -360,20 +388,12 @@ export default function RoomPage() {
 
   const addedRoomRef = useRef<string | null>(null);
   useEffect(() => {
-    if (!user) {
-      const guestUser = {
-        userId: 'anon-' + Math.random().toString(36).substring(2, 9),
-        displayName: 'Guest_' + Math.floor(100 + Math.random() * 900),
-        avatarColor: '#00d4d4',
-      };
-      setUser(guestUser);
-      return;
-    }
-    if (inviteCode && addedRoomRef.current !== inviteCode) {
+    if (!user || !inviteCode) return;
+    if (addedRoomRef.current !== inviteCode) {
       addedRoomRef.current = inviteCode;
       addRoom(inviteCode, activeRoom.name || 'Listening Room');
     }
-  }, [user, setUser, inviteCode, addRoom, activeRoom.name]);
+  }, [user, inviteCode, addRoom, activeRoom.name]);
 
   // Online / Offline tracking & automatic friend YouTube alert
   const [isOnline, setIsOnline] = useState<boolean>(() =>
@@ -414,6 +434,7 @@ export default function RoomPage() {
   useEffect(() => {
     function onClickOutside(e: MouseEvent) {
       if (searchRef.current && !searchRef.current.contains(e.target as Node)) setShowResults(false);
+      if (membersRef.current && !membersRef.current.contains(e.target as Node)) setShowMembers(false);
     }
     document.addEventListener('mousedown', onClickOutside);
     return () => document.removeEventListener('mousedown', onClickOutside);
@@ -637,25 +658,49 @@ export default function RoomPage() {
     }
   }, [micMuted]);
 
-  // Local audio cleanup
+  // Device Song playback: one <audio> element driven entirely by room state, so the
+  // uploader and everyone else follow the same play/pause/seek signals.
   useEffect(() => {
     if (!localAudioEl) return;
-    localAudioEl.onended = () => {
-      setLocalPlaying((prev) => {
-        if (prev === null) return null;
-        const next = prev + 1;
-        if (next < localFiles.length) {
-          localAudioEl.src = localFiles[next].url;
-          localAudioEl.play();
-          return next;
-        }
-        return null;
-      });
-    };
-    return () => {
+    if (!deviceMediaId) {
       localAudioEl.pause();
+      return;
+    }
+    const own = localFiles.find((f) => f.mediaId === deviceMediaId);
+    const src = own?.url ? own.url : mediaStreamUrl(inviteCode || '', deviceMediaId);
+    if (deviceSrcRef.current !== src) {
+      deviceSrcRef.current = src;
+      localAudioEl.src = src;
+    }
+    if (activeRoom.isPlaying) void localAudioEl.play().catch(() => {});
+    else localAudioEl.pause();
+  }, [localAudioEl, deviceMediaId, inviteCode, localFiles, activeRoom.isPlaying]);
+
+  useEffect(() => {
+    if (!localAudioEl || !deviceMediaId || !remotePlayerState) return;
+    const stamp = remotePlayerState.timestamp || Date.now();
+    const latency = Math.max(0, (Date.now() - stamp) / 1000);
+    const sent = remotePlayerState.currentTime || 0;
+    const target = sent + (latency < 2 ? latency : 0);
+    const seekTo = (sec: number) => {
+      try {
+        localAudioEl.currentTime = sec;
+      } catch {}
     };
-  }, [localAudioEl, localFiles]);
+    try {
+      if (remotePlayerState.action === 'pause') {
+        localAudioEl.pause();
+        if (Math.abs(localAudioEl.currentTime - sent) > 0.35) seekTo(sent);
+      } else if (remotePlayerState.action === 'play') {
+        if (Math.abs(localAudioEl.currentTime - target) > 0.12) seekTo(target);
+        void localAudioEl.play().catch(() => {});
+      } else if (remotePlayerState.action === 'seek') {
+        seekTo(sent);
+      } else if (remotePlayerState.action === 'sync_tick' && !isHost) {
+        if (!localAudioEl.paused && Math.abs(localAudioEl.currentTime - target) > 0.18) seekTo(target);
+      }
+    } catch {}
+  }, [localAudioEl, deviceMediaId, remotePlayerState, isHost]);
 
   const runSearch = useCallback(async (q: string) => {
     if (!q.trim()) {
@@ -728,15 +773,22 @@ export default function RoomPage() {
 
   const handleTogglePlayback = () => {
     if (!activeRoom?.currentTrack) return;
-    const curTime = playerGetTimeRef.current ? playerGetTimeRef.current() : (activeRoom.currentTime || 0);
+    const usingDevice = activeRoom.currentTrack.source === 'device';
+    const curTime = usingDevice
+      ? (localAudioEl?.currentTime ?? activeRoom.currentTime ?? 0)
+      : playerGetTimeRef.current
+        ? playerGetTimeRef.current()
+        : (activeRoom.currentTime || 0);
     if (activeRoom.isPlaying) {
       // ⚡ INSTANT 0ms PAUSE ON LOCAL DEVICE
-      playerControlRef.current?.pauseVideo();
+      if (usingDevice) localAudioEl?.pause();
+      else playerControlRef.current?.pauseVideo();
       backgroundAudioManager.stopKeepAlive();
       send({ type: 'pause', currentTime: curTime });
     } else {
       // ⚡ INSTANT 0ms PLAY ON LOCAL DEVICE
-      playerControlRef.current?.playVideo();
+      if (usingDevice) void localAudioEl?.play().catch(() => {});
+      else playerControlRef.current?.playVideo();
       backgroundAudioManager.startKeepAlive();
       send({ type: 'play', currentTime: curTime });
     }
@@ -752,7 +804,7 @@ export default function RoomPage() {
       backgroundAudioManager.startKeepAlive();
       backgroundAudioManager.updateMediaSession({
         title: activeRoom.currentTrack.title,
-        artist: 'SyncBeat Live Sync',
+        artist: deviceTrack ? 'Device Song · Shared with the room' : 'SyncBeat Live Sync',
         artworkUrl: activeRoom.currentTrack.thumbnail,
         isPlaying: true,
         onPlay: handleTogglePlayback,
@@ -763,7 +815,7 @@ export default function RoomPage() {
       backgroundAudioManager.stopKeepAlive();
       backgroundAudioManager.updateMediaSession({
         title: activeRoom.currentTrack.title,
-        artist: 'SyncBeat Live Sync (Paused)',
+        artist: deviceTrack ? 'Device Song · Shared with the room' : 'SyncBeat Live Sync (Paused)',
         artworkUrl: activeRoom.currentTrack.thumbnail,
         isPlaying: false,
         onPlay: handleTogglePlayback,
@@ -777,27 +829,92 @@ export default function RoomPage() {
     if (!isHost || !activeRoom?.isPlaying || !activeRoom?.currentTrack || !isConnected) return;
 
     const interval = setInterval(() => {
-      const cur = playerGetTimeRef.current?.();
+      const cur = deviceTrack && localAudioEl ? localAudioEl.currentTime : playerGetTimeRef.current?.();
       if (typeof cur === 'number' && cur > 0) {
         send({ type: 'sync_tick', currentTime: cur, timestamp: Date.now() });
       }
     }, 1200);
 
     return () => clearInterval(interval);
-  }, [isHost, activeRoom?.isPlaying, activeRoom?.currentTrack, isConnected, send]);
+  }, [isHost, activeRoom?.isPlaying, activeRoom?.currentTrack, isConnected, send, deviceTrack, localAudioEl]);
+
+  const uploadDeviceSong = async (file: DeviceFile): Promise<string | null> => {
+    if (file.mediaId) return file.mediaId;
+    if (!inviteCode || !file.blob) return null;
+    if ((file.size ?? file.blob.size) > MAX_DEVICE_SONG_BYTES) {
+      setDeviceNote('Songs over 10 MB are too big to share — pick a smaller file');
+      return null;
+    }
+    setDeviceBusy(file.name);
+    setDeviceNote(null);
+    try {
+      const res = await authFetch(
+        `/api/rooms/${encodeURIComponent(inviteCode)}/media?title=${encodeURIComponent(file.name)}`,
+        {
+          method: 'POST',
+          headers: { 'Content-Type': file.mime || 'audio/mpeg' },
+          body: file.blob,
+        }
+      );
+      if (!res.ok) {
+        setDeviceNote(
+          res.status === 413 ? 'That song is above the 10 MB share limit' : 'Upload failed — please try again'
+        );
+        return null;
+      }
+      const meta = (await res.json()) as { id?: string };
+      const newId = meta.id;
+      if (!newId) return null;
+      setLocalFiles((prev) => prev.map((f) => (f.id === file.id ? { ...f, mediaId: newId } : f)));
+      return newId;
+    } catch {
+      setDeviceNote('Sharing a Device Song needs internet — reconnect and try again');
+      return null;
+    } finally {
+      setDeviceBusy(null);
+    }
+  };
+
+  /** Plays a device song for the whole room: instantly here, then broadcast as the room track. */
+  const playDeviceSong = async (file: DeviceFile) => {
+    if (!localAudioEl) return;
+    const mediaId = await uploadDeviceSong(file);
+    if (!mediaId) return;
+    const src = file.url || mediaStreamUrl(inviteCode || '', mediaId);
+    deviceSrcRef.current = src;
+    localAudioEl.src = src;
+    try {
+      localAudioEl.currentTime = 0;
+    } catch {}
+    void localAudioEl.play().catch(() => {});
+    backgroundAudioManager.startKeepAlive();
+    const delivered = send({
+      type: 'track_change',
+      videoId: mediaId,
+      title: file.name,
+      source: 'device',
+      mediaId,
+      duration: file.duration || 0,
+    });
+    setSyncNote(delivered ? null : 'Song held until sync returns');
+  };
 
   const handleLocalFileSelect = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const files = Array.from(e.target.files || []);
     if (files.length === 0) return;
     try {
-      // Save permanently into IndexedDB for 100% offline access ("bina net ke")
+      // Keep a local copy in IndexedDB, then share a copy with the room
       const saved = await saveOfflineSongs(files);
-      const newItems = saved.map((s) => ({
+      const newItems: DeviceFile[] = saved.map((s) => ({
         id: s.id,
         name: s.name,
         url: s.url || '',
+        size: s.size,
+        blob: s.blob,
+        mime: s.type,
       }));
       setLocalFiles((prev) => [...prev, ...newItems]);
+      for (const item of newItems) await uploadDeviceSong(item);
     } catch (err) {
       console.warn('[OfflineStorage] Error saving offline files:', err);
     }
@@ -805,60 +922,46 @@ export default function RoomPage() {
   };
 
   const playLocalFile = (idx: number) => {
-    if (!localAudioEl || !localFiles[idx]) return;
     const file = localFiles[idx];
-
-    if (localPlaying === idx && !isLocalPaused) {
-      localAudioEl.pause();
-      setIsLocalPaused(true);
-      backgroundAudioManager.stopKeepAlive();
-      backgroundAudioManager.updateMediaSession({
-        title: file.name,
-        artist: 'Mera Mobile Device (Offline)',
-        isPlaying: false,
-        onPlay: () => playLocalFile(idx),
-        onPause: () => playLocalFile(idx),
-      });
+    if (!file) return;
+    if (file.mediaId && file.mediaId === deviceMediaId) {
+      handleTogglePlayback();
       return;
     }
-    if (localPlaying === idx && isLocalPaused) {
-      localAudioEl.play();
-      setIsLocalPaused(false);
-      backgroundAudioManager.startKeepAlive();
-      backgroundAudioManager.updateMediaSession({
-        title: file.name,
-        artist: 'Mera Mobile Device (Offline)',
-        isPlaying: true,
-        onPlay: () => playLocalFile(idx),
-        onPause: () => playLocalFile(idx),
-      });
-      return;
-    }
-    localAudioEl.src = file.url;
-    localAudioEl.play();
-    setLocalPlaying(idx);
-    setIsLocalPaused(false);
-    backgroundAudioManager.startKeepAlive();
-    backgroundAudioManager.updateMediaSession({
-      title: file.name,
-      artist: 'Mera Mobile Device (Offline)',
-      isPlaying: true,
-      onPlay: () => playLocalFile(idx),
-      onPause: () => playLocalFile(idx),
-    });
+    void playDeviceSong(file);
   };
+
+  // Auto-advance the device playlist — only the host decides, everyone else follows
+  useEffect(() => {
+    if (!localAudioEl) return;
+    const onEnded = () => {
+      if (!isHost || !deviceMediaId) return;
+      const idx = localFiles.findIndex((f) => f.mediaId === deviceMediaId);
+      const next = localFiles.slice(idx + 1).find((f) => f.mediaId);
+      if (next) void playDeviceSong(next);
+      else if (queue.length > 0) send({ type: 'queue_skip' });
+    };
+    localAudioEl.addEventListener('ended', onEnded);
+    return () => localAudioEl.removeEventListener('ended', onEnded);
+  }, [localAudioEl, isHost, deviceMediaId, localFiles, queue.length, send]);
+
+  useEffect(() => {
+    return () => {
+      localAudioEl?.pause();
+    };
+  }, [localAudioEl]);
 
   const removeLocalFile = async (idx: number) => {
     const file = localFiles[idx];
-    if (localPlaying === idx) {
+    if (!file) return;
+    if (file.mediaId && file.mediaId === deviceMediaId) {
       localAudioEl?.pause();
-      setLocalPlaying(null);
       backgroundAudioManager.stopKeepAlive();
     }
-    if (file?.id) {
+    if (file.id) {
       await deleteOfflineSong(file.id);
     }
-    if (file?.url) {
+    if (file.url) {
       try {
         URL.revokeObjectURL(file.url);
       } catch {}
@@ -1049,37 +1152,97 @@ export default function RoomPage() {
             accentHue={moodHue}
           />
 
-          {/* Who's in — floating avatar stack */}
-          <div
-            className="relative flex items-center gap-2 pl-1.5 pr-2.5 py-1 rounded-2xl border border-white/10 chip-pop"
-            style={{
-              background: 'linear-gradient(150deg, rgba(0,212,212,0.14), rgba(255,255,255,0.03) 55%, rgba(59,130,246,0.12))',
-              boxShadow: '0 8px 22px rgba(0,0,0,0.5), inset 0 1px 0 rgba(255,255,255,0.1)',
-            }}
-            title={`${members.length} listening`}
-          >
-            <div className="flex items-center -space-x-2">
-              {members.slice(0, 3).map((m) => (
-                <span
-                  key={m.userId}
-                  className="w-[21px] h-[21px] rounded-full ring-2 ring-[#060a16] flex items-center justify-center text-[9px] font-black text-white shrink-0"
-                  style={{ backgroundColor: m.avatarColor, boxShadow: '0 0 10px rgba(0,212,212,0.3)' }}
+          {/* Who's in — click the count to see every member by name */}
+          <div ref={membersRef} className="relative">
+            <button
+              type="button"
+              onClick={() => setShowMembers((v) => !v)}
+              className="flex items-center gap-2 pl-1.5 pr-2.5 py-1 rounded-2xl border border-white/10 chip-pop text-left"
+              style={{
+                background: 'linear-gradient(150deg, rgba(0,212,212,0.14), rgba(255,255,255,0.03) 55%, rgba(59,130,246,0.12))',
+                boxShadow: '0 8px 22px rgba(0,0,0,0.5), inset 0 1px 0 rgba(255,255,255,0.1)',
+              }}
+              title={`${members.length} listening — tap to see who`}
+            >
+              <div className="flex items-center -space-x-2">
+                {members.slice(0, 3).map((m) => (
+                  <span
+                    key={m.userId}
+                    className="w-[21px] h-[21px] rounded-full ring-2 ring-[#060a16] flex items-center justify-center text-[9px] font-black text-white shrink-0"
+                    style={{ backgroundColor: m.avatarColor, boxShadow: '0 0 10px rgba(0,212,212,0.3)' }}
+                  >
+                    {m.displayName.charAt(0).toUpperCase()}
+                  </span>
+                ))}
+                {members.length > 3 && (
+                  <span className="w-[21px] h-[21px] rounded-full ring-2 ring-[#060a16] bg-white/10 flex items-center justify-center text-[8px] font-black text-white/70 shrink-0">
+                    +{members.length - 3}
+                  </span>
+                )}
+                {members.length === 0 && <Users className="w-3.5 h-3.5 text-cyan-400" />}
+              </div>
+              <span className="text-[11px] font-black tabular-nums text-white/85">{members.length}</span>
+              <span
+                className="absolute -right-0.5 -top-0.5 w-1.5 h-1.5 rounded-full bg-green-400"
+                style={{ boxShadow: '0 0 8px rgba(74,222,128,0.9)' }}
+              />
+            </button>
+
+            <AnimatePresence>
+              {showMembers && (
+                <motion.div
+                  initial={{ opacity: 0, y: -6, scale: 0.97 }}
+                  animate={{ opacity: 1, y: 0, scale: 1 }}
+                  exit={{ opacity: 0, y: -6, scale: 0.97 }}
+                  transition={{ duration: 0.16 }}
+                  className="absolute right-0 top-full mt-2 z-40 w-60 rounded-2xl border border-white/10 bg-[#080c18]/95 backdrop-blur-xl overflow-hidden"
+                  style={{ boxShadow: '0 18px 45px rgba(0,0,0,0.65), inset 0 1px 0 rgba(255,255,255,0.08)' }}
                 >
-                  {m.displayName.charAt(0).toUpperCase()}
-                </span>
-              ))}
-              {members.length > 3 && (
-                <span className="w-[21px] h-[21px] rounded-full ring-2 ring-[#060a16] bg-white/10 flex items-center justify-center text-[8px] font-black text-white/70 shrink-0">
-                  +{members.length - 3}
-                </span>
+                  <div className="flex items-center justify-between px-3 py-2.5 border-b border-white/6">
+                    <p className="text-[10px] font-black uppercase tracking-[0.18em] text-white/45">In this room</p>
+                    <span className="text-[10px] font-bold text-cyan-400">{members.length}</span>
+                  </div>
+                  <div className="max-h-56 overflow-y-auto scrollbar-hide divide-y divide-white/5">
+                    {members.map((m) => {
+                      const isYou = m.userId === user?.userId;
+                      const voice = voiceStates[m.userId];
+                      return (
+                        <div key={m.userId} className="flex items-center gap-2.5 px-3 py-2">
+                          <span
+                            className="w-6 h-6 rounded-full flex items-center justify-center text-[10px] font-black text-white shrink-0"
+                            style={{ backgroundColor: m.avatarColor }}
+                          >
+                            {m.displayName.charAt(0).toUpperCase()}
+                          </span>
+                          <div className="min-w-0 flex-1">
+                            <p className="text-[11px] font-bold text-white/85 truncate">{m.displayName}</p>
+                            <p className="text-[9px] text-white/35 font-medium truncate">
+                              {m.userId === activeRoom.hostUserId ? 'Room host' : isYou ? 'You' : 'Listening'}
+                            </p>
+                          </div>
+                          {voice?.inVoice && (voice?.micMuted ? (
+                            <MicOff className="w-3 h-3 text-red-400/80 shrink-0" />
+                          ) : (
+                            <Mic className="w-3 h-3 text-cyan-400/80 shrink-0" />
+                          ))}
+                        </div>
+                      );
+                    })}
+                    {members.length === 0 && (
+                      <p className="px-3 py-3 text-[11px] text-white/35">Nobody else has joined yet.</p>
+                    )}
+                  </div>
+                  <div className="px-3 py-2 border-t border-white/6 bg-white/[0.02]">
+                    <button
+                      onClick={() => copyInvite()}
+                      className="w-full flex items-center justify-center gap-1.5 py-1.5 rounded-lg bg-cyan-500/10 hover:bg-cyan-500/20 text-cyan-400 border border-cyan-400/25 text-[10px] font-bold"
+                    >
+                      <Plus className="w-3 h-3" /> Invite more people
+                    </button>
+                  </div>
+                </motion.div>
               )}
-              {members.length === 0 && <Users className="w-3.5 h-3.5 text-cyan-400" />}
-            </div>
-            <span className="text-[11px] font-black tabular-nums text-white/85">{members.length}</span>
-            <span
-              className="absolute -right-0.5 -top-0.5 w-1.5 h-1.5 rounded-full bg-green-400"
-              style={{ boxShadow: '0 0 8px rgba(74,222,128,0.9)' }}
-            />
+            </AnimatePresence>
           </div>
 
           {/* Close Room — host only */}
@@ -1343,7 +1506,33 @@ export default function RoomPage() {
                     : '0 10px 30px rgba(0,0,0,0.6)',
                 }}
               >
-                {activeRoom.currentTrack ? (
+                {activeRoom.currentTrack && deviceTrack ? (
+                  <div className="absolute inset-0 flex flex-col items-center justify-center text-center p-4 bg-gradient-to-br from-cyan-950/40 via-[#07101f] to-[#04070f]">
+                    <div className="animate-float-3d mb-4" style={{ perspective: '800px' }}>
+                      <div className="relative">
+                        <div className="absolute -inset-3 rounded-full border border-cyan-400/25 animate-pulse-ring" />
+                        <VinylDisc size={120} labelColor={`hsl(${moodHue} 85% 55%)`} spinning={activeRoom.isPlaying} />
+                      </div>
+                    </div>
+                    <span className="text-[9px] font-black uppercase tracking-[0.22em] text-cyan-400/80 mb-2">
+                      Device Song · Shared With Everyone
+                    </span>
+                    <p
+                      className="text-sm font-bold tracking-wide text-white/90 max-w-[85%] truncate"
+                      style={{ fontFamily: 'var(--app-font-display)' }}
+                    >
+                      {deviceTrack.title}
+                    </p>
+                    <p className="text-[11px] text-white/35 mt-1.5">
+                      {deviceTrack.uploadedBy ? `From ${deviceTrack.uploadedBy}'s device` : "From a member's device"} · {members.length} {members.length === 1 ? 'person' : 'people'} listening
+                    </p>
+                    {deviceTrack.uploadedBy && deviceTrack.uploadedBy !== user?.displayName && (
+                      <p className="text-[10px] text-emerald-400/80 mt-3 font-semibold">
+                        Streaming the copy they shared — no file needed on your phone
+                      </p>
+                    )}
+                  </div>
+                ) : activeRoom.currentTrack ? (
                   <>
                     <YouTubePlayer
                       videoId={activeRoom.currentTrack.videoId}
@@ -1468,7 +1657,13 @@ export default function RoomPage() {
                     <Play className="w-4.5 h-4.5 ml-0.5 fill-current" />
                   )}
                 </button>
-                <img src={activeRoom.currentTrack.thumbnail} alt="" className="w-12 h-9 rounded-lg object-cover shrink-0 border border-white/10" />
+                {activeRoom.currentTrack.thumbnail ? (
+                  <img src={activeRoom.currentTrack.thumbnail} alt="" className="w-12 h-9 rounded-lg object-cover shrink-0 border border-white/10" />
+                ) : (
+                  <div className="w-12 h-9 rounded-lg shrink-0 border border-cyan-400/25 bg-cyan-500/10 flex items-center justify-center">
+                    <Music2 className="w-4 h-4 text-cyan-400" />
+                  </div>
+                )}
                 <div className="flex-1 min-w-0">
                   <p className="font-semibold text-xs truncate text-white/90">{activeRoom.currentTrack.title}</p>
                   <div className="flex items-center gap-1.5 mt-0.5">
@@ -1539,7 +1734,7 @@ export default function RoomPage() {
                   {queue.map((qTrack, idx) => (
                     <div key={qTrack.videoId + '-' + idx} className="row-slide flex items-center gap-3 px-3 py-2.5 hover:bg-white/[0.03] group">
                       <span className="text-[10px] text-white/25 font-mono w-4 text-center shrink-0">{idx + 1}</span>
-                      <img src={qTrack.thumbnail} alt="" className="w-10 h-7 rounded object-cover shrink-0 border border-white/8" />
+                      <img src={qTrack.thumbnail || '/brand-icon-192.png'} alt="" className="w-10 h-7 rounded object-cover shrink-0 border border-white/8" />
                       <div className="flex-grow min-w-0">
                         <p className="text-xs font-medium truncate text-white/80 group-hover:text-white transition-colors">{qTrack.title}</p>
                       </div>
@@ -1758,10 +1953,10 @@ export default function RoomPage() {
                   >
                     <Smartphone className="w-3.5 h-3.5 text-cyan-400" />
                   </div>
-                  <h3 className="text-xs font-extrabold text-white/80">📱 Mera Mobile Device</h3>
+                  <h3 className="text-xs font-extrabold text-white/80">🎧 Device Song</h3>
                   <span className="text-[9px] bg-emerald-500/15 text-emerald-400 border border-emerald-500/30 px-2 py-0.5 rounded-full font-bold flex items-center gap-1">
                     <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />
-                    Offline (Bina Net Ke)
+                    Shared With The Room
                   </span>
                   {localFiles.length > 0 && (
                     <span className="text-[9px] bg-cyan-400/20 text-cyan-400 px-1.5 py-0.5 rounded-full font-bold">{localFiles.length} songs</span>
@@ -1796,22 +1991,38 @@ export default function RoomPage() {
                     </div>
                   </div>
                   <p className="text-xs font-semibold text-center px-4 text-white/80 group-hover:text-cyan-300 transition-colors">
-                    Apne mobile device / phone storage se audio files select karein
+                    Select audio files from your device
                   </p>
-                  <span className="text-[10px] text-cyan-400/70 font-medium">Bina internet ke bhi offline chalega • Click to select</span>
+                  <span className="text-[10px] text-cyan-400/70 font-medium">Plays for every member in the room • Click to select</span>
                 </div>
               ) : (
                 <div className="divide-y divide-white/5 max-h-[180px] overflow-y-auto scrollbar-hide">
                   {localFiles.map((file, idx) => {
-                    const isPlaying = localPlaying === idx && !isLocalPaused;
+                    const isCurrent = !!file.mediaId && file.mediaId === deviceMediaId;
+                    const isPlaying = isCurrent && activeRoom.isPlaying;
+                    const isUploading = deviceBusy === file.name;
                     return (
-                      <div key={idx} className={`row-slide flex items-center gap-3 px-3 py-2 group ${localPlaying === idx ? 'bg-cyan-400/[0.04]' : 'hover:bg-white/[0.02]'}`}>
-                        <button onClick={() => playLocalFile(idx)} className={`chip-pop w-7 h-7 rounded-lg flex items-center justify-center shrink-0 ${localPlaying === idx ? 'bg-cyan-500 text-black shadow-[0_0_14px_rgba(0,212,212,0.4)]' : 'bg-white/5 text-white/50 hover:bg-cyan-500/25 hover:text-cyan-400 border border-white/8'}`}>
-                          {isPlaying ? <Pause className="w-3 h-3" /> : <Play className="w-3 h-3 ml-0.5 fill-current" />}
+                      <div key={file.id || idx} className={`row-slide flex items-center gap-3 px-3 py-2 group ${isCurrent ? 'bg-cyan-400/[0.04]' : 'hover:bg-white/[0.02]'}`}>
+                        <button
+                          onClick={() => playLocalFile(idx)}
+                          disabled={isUploading}
+                          className={`chip-pop w-7 h-7 rounded-lg flex items-center justify-center shrink-0 ${isCurrent ? 'bg-cyan-500 text-black shadow-[0_0_14px_rgba(0,212,212,0.4)]' : 'bg-white/5 text-white/50 hover:bg-cyan-500/25 hover:text-cyan-400 border border-white/8'} ${isUploading ? 'opacity-50' : ''}`}
+                        >
+                          {isUploading ? <Loader2 className="w-3 h-3 animate-spin" /> : isPlaying ? <Pause className="w-3 h-3" /> : <Play className="w-3 h-3 ml-0.5 fill-current" />}
                         </button>
                         <div className="flex-grow min-w-0">
-                          <p className={`text-xs font-semibold truncate ${localPlaying === idx ? 'text-cyan-400' : 'text-white/80'}`}>{file.name}</p>
-                          <p className="text-[9px] text-emerald-400/80 font-medium">Saved in Device • Offline Ready</p>
+                          <p className={`text-xs font-semibold truncate ${isCurrent ? 'text-cyan-400' : 'text-white/80'}`}>{file.name}</p>
+                          <p className={`text-[9px] font-medium ${isUploading ? 'text-amber-400/80' : 'text-emerald-400/80'}`}>
+                            {isUploading
+                              ? 'Sharing with the room…'
+                              : isPlaying
+                                ? 'Playing for everyone'
+                                : isCurrent
+                                  ? 'Paused for everyone'
+                                  : file.mediaId
+                                    ? 'Saved • Shared with the room'
+                                    : 'Saved on device • Tap plays it for everyone'}
+                          </p>
                         </div>
                         <button onClick={() => removeLocalFile(idx)} className="chip-pop p-1 rounded-lg text-white/20 hover:text-red-400 hover:bg-red-500/10 opacity-0 group-hover:opacity-100">
                           <Trash2 className="w-3 h-3" />
@@ -1820,6 +2031,11 @@ export default function RoomPage() {
                     );
                   })}
                 </div>
+              )}
+              {deviceNote && (
+                <p className="px-3 py-2 text-[10px] font-semibold text-amber-400/90 bg-amber-500/[0.06] border-t border-white/5">
+                  {deviceNote}
+                </p>
               )}
             </div>
 
@@ -1845,8 +2061,8 @@ export default function RoomPage() {
                     {/* Header */}
                     <div className="flex items-center justify-between px-4 py-3.5 border-b border-white/8">
                       <div>
-                        <h3 className="font-extrabold text-sm text-white">📱 Apke Phone ke Music Apps</h3>
-                        <p className="text-[10px] text-white/35 mt-0.5">Apne mobile device se songs select karo</p>
+                        <h3 className="font-extrabold text-sm text-white">🎧 Device Songs</h3>
+                        <p className="text-[10px] text-white/35 mt-0.5">Pick songs stored on your device</p>
                       </div>
                       <button onClick={() => { setShowAppPicker(false); setSelectedApp(null); }} className="p-1.5 rounded-lg bg-white/5 hover:bg-white/10 text-white/40">
                         <X className="w-4 h-4" />
@@ -1878,7 +2094,7 @@ export default function RoomPage() {
                                 {app.desc}
                               </p>
                               <p className="text-[10px] text-cyan-400 font-semibold mt-1.5 flex items-center gap-1">
-                                <span>📁 Files app me jao aur song chuno</span>
+                                <span>📁 Open your Files app and pick a song</span>
                                 <span>→</span>
                               </p>
                             </div>
