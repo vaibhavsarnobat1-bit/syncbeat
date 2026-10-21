@@ -25,3 +25,12 @@ jobs:
           # A cold service answers 503/timeout on the first hit; that wake-up is
           # the point of this job, so a failure here is not worth an email.
           exit 0
+
+      - name: Wake the database too
+        run: |
+          # An external free Postgres suspends its compute when no queries arrive,
+          # so the first visitor of a quiet spell waits for it to come back. This
+          # route runs one cheap SELECT on `users`, and only answers 200 when the
+          # database is actually reachable.
+          curl -s -o /dev/null -w 'db -> %{http_code}\n' --max-time 60 \
+            https://syncbeat-vaibhav.onrender.com/api/auth/username/warmup/available || true
