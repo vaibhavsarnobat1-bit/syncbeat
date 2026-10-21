@@ -73,7 +73,8 @@ export const Music3DCanvas = React.memo(function Music3DCanvas({
     let animId: number;
     let width = 0;
     let height = 0;
-    const dpr = Math.min(window.devicePixelRatio || 1, 2);
+    const isMobile = typeof window !== 'undefined' && window.innerWidth < 768;
+    const dpr = isMobile ? 1 : Math.min(window.devicePixelRatio || 1, 1.5);
 
     const handleResize = () => {
       if (!canvas || !canvas.parentElement) return;
@@ -104,7 +105,7 @@ export const Music3DCanvas = React.memo(function Music3DCanvas({
        NEBULA — aurora ribbons, glow orbs, starfield
        ════════════════════════════════════════════════════ */
     if (mode === 'nebula') {
-      const stars: NebulaStar[] = Array.from({ length: 110 }, () => ({
+      const stars: NebulaStar[] = Array.from({ length: isMobile ? 40 : 90 }, () => ({
         x: Math.random(),
         y: Math.random(),
         r: Math.random() * 1.2 + 0.3,
@@ -114,10 +115,10 @@ export const Music3DCanvas = React.memo(function Music3DCanvas({
       }));
 
       const orbHues = [186, 200, 217, 262, 300, 330, 190];
-      const orbs: NebulaOrb[] = Array.from({ length: 7 }, (_, i) => ({
+      const orbs: NebulaOrb[] = Array.from({ length: isMobile ? 3 : 6 }, (_, i) => ({
         bx: 0.12 + Math.random() * 0.76,
         by: 0.18 + Math.random() * 0.64,
-        r: 70 + Math.random() * 130,
+        r: (isMobile ? 50 : 70) + Math.random() * (isMobile ? 70 : 130),
         hue: orbHues[i % orbHues.length],
         phase: Math.random() * Math.PI * 2,
         dx: 30 + Math.random() * 55,

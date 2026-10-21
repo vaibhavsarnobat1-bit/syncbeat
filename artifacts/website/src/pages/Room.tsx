@@ -1508,7 +1508,17 @@ export default function RoomPage() {
               >
                 {activeRoom.currentTrack && deviceTrack ? (
                   <div className="absolute inset-0 flex flex-col items-center justify-center text-center p-4 bg-gradient-to-br from-cyan-950/40 via-[#07101f] to-[#04070f]">
-                    <div className="animate-float-3d mb-4" style={{ perspective: '800px' }}>
+                    <div
+                      className="animate-float-3d mb-4 cursor-pointer select-none active:scale-95 transition-transform"
+                      style={{ perspective: '800px' }}
+                      onClick={() => {
+                        if (localAudioEl && localAudioEl.paused && activeRoom.isPlaying) {
+                          localAudioEl.play().catch(() => {});
+                        }
+                        handleTogglePlayback();
+                      }}
+                      title="Tap to Play / Pause"
+                    >
                       <div className="relative">
                         <div className="absolute -inset-3 rounded-full border border-cyan-400/25 animate-pulse-ring" />
                         <VinylDisc size={120} labelColor={`hsl(${moodHue} 85% 55%)`} spinning={activeRoom.isPlaying} />
@@ -1547,6 +1557,7 @@ export default function RoomPage() {
                           handleQueueSkip();
                         }
                       }}
+                      onSkipNext={queue.length > 0 ? () => handleQueueSkip() : undefined}
                       onReady={() => {}}
                       getTimeRef={playerGetTimeRef}
                       playerControlRef={playerControlRef}
@@ -1972,7 +1983,7 @@ export default function RoomPage() {
                 <input
                   ref={localFileInputRef}
                   type="file"
-                  accept="audio/*,.mp3,.m4a,.wav,.aac,.ogg,.flac"
+                  accept="audio/*"
                   multiple
                   className="hidden"
                   onChange={handleLocalFileSelect}

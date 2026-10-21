@@ -22,6 +22,7 @@ interface YouTubePlayerProps {
   onSeek: (currentTime: number) => void;
   onReady: () => void;
   onEnded?: () => void;
+  onSkipNext?: () => void;
   remoteState: { action: 'play' | 'pause' | 'seek' | 'sync_tick'; currentTime: number; timestamp: number } | null;
   isHost: boolean;
   getTimeRef?: React.MutableRefObject<(() => number) | null>;
@@ -37,6 +38,7 @@ export function YouTubePlayer({
   onPause,
   onReady,
   onEnded,
+  onSkipNext,
   remoteState,
   getTimeRef,
   playerControlRef,
@@ -45,11 +47,31 @@ export function YouTubePlayer({
 }: YouTubePlayerProps) {
   const playerRef = useRef<any>(null);
   const wrapperRef = useRef<HTMLDivElement>(null);
+  const containerRef = useRef<HTMLDivElement>(null);
   const [isApiReady, setIsApiReady] = useState(!!window.YT?.Player);
   const remoteLockUntilRef = useRef<number>(0);
   const lastReportedStateRef = useRef<'play' | 'pause' | null>(null);
   const currentVideoIdRef = useRef<string>(videoId);
   const [embedError, setEmbedError] = useState<number | null>(null);
+  const [isFullscreen, setIsFullscreen] = useState(false);
+
+  const toggleFullscreen = () => {
+    const el = containerRef.current;
+    if (!el) return;
+    if (!document.fullscreenElement) {
+      el.requestFullscreen?.().catch(() => {});
+    } else {
+      document.exitFullscreen?.().catch(() => {});
+    }
+  };
+
+  useEffect(() => {
+    const onFsChange = () => {
+      setIsFullscreen(!!document.fullscreenElement);
+    };
+    document.addEventListener('fullscreenchange', onFsChange);
+    return () => document.removeEventListener('fullscreenchange', onFsChange);
+  }, []);
 
   // Expose imperative control functions (Play/Pause/Seek) for instant 0ms response
   useEffect(() => {
@@ -335,7 +357,7 @@ export function YouTubePlayer({
   }, [remoteState, isPlaying]);
 
   return (
-    <div className="relative w-full h-full overflow-hidden bg-black group">
+    <div ref={containerRef} className="relative w-full h-full overflow-hidden bg-black group">
       {/* YouTube iframe wrapper */}
       <div
         ref={wrapperRef}
@@ -343,25 +365,35 @@ export function YouTubePlayer({
         style={{ width: '100%', height: '100%' }}
       />
 
-      {/* ⚠️ Embed Error Overlay: shown when video can't be embedded (error 101/150 = embedding disabled by owner) */}
+      {/* ⚠️ Embed Error Overlay: shown when video can't be embedded */}
       {embedError !== null && (
         <div className="absolute inset-0 z-30 bg-[#060708] flex flex-col items-center justify-center text-center p-4 sm:p-6">
-          <div className="text-4xl mb-4">🎵</div>
-          <h3 className="text-white font-bold text-sm sm:text-base mb-2">
-            This video can't play here
+          <div className="text-4xl mb-3 animate-bounce">🎧</div>
+          <h3 className="text-white font-bold text-sm sm:text-base mb-1.5">
+            Song Restricted by Owner
           </h3>
-          <p className="text-slate-400 text-xs mb-5 max-w-xs leading-relaxed">
-            The video owner has disabled embedding. You can watch it directly on YouTube, or try a different song.
+          <p className="text-slate-400 text-xs mb-4 max-w-xs leading-relaxed">
+            This YouTube track doesn&apos;t permit embedded playback on third-party sites.
           </p>
-          <a
-            href={`https://www.youtube.com/watch?v=${videoId}`}
-            target="_blank"
-            rel="noopener noreferrer"
-            className="flex items-center gap-2 px-5 py-2.5 rounded-full bg-red-600 hover:bg-red-500 text-white font-bold text-sm transition-colors shadow-lg shadow-red-500/20"
-          >
-            <svg viewBox="0 0 24 24" className="w-4 h-4 fill-current"><path d="M23.5 6.5s-.3-2-1.2-2.9c-1.1-1.2-2.4-1.2-3-1.3C16.8 2.1 12 2 12 2s-4.8.1-7.3.3c-.6.1-1.9.1-3 1.3C.8 4.5.5 6.5.5 6.5S.2 8.8.2 11v2.1c0 2.2.3 4.5.3 4.5s.3 2 1.2 2.9c1.1 1.2 2.6 1.1 3.3 1.2C7.2 21.9 12 22 12 22s4.8-.1 7.3-.3c.6-.1 1.9-.1 3-1.3.9-.9 1.2-2.9 1.2-2.9s.3-2.2.3-4.5V11c0-2.2-.3-4.5-.3-4.5zM9.7 15.5V8.4l6.6 3.6-6.6 3.5z"/></svg>
-            Watch on YouTube
-          </a>
+          <div className="flex flex-wrap items-center justify-center gap-2.5">
+            {onSkipNext && (
+              <button
+                type="button"
+                onClick={onSkipNext}
+                className="px-4 py-2 rounded-xl bg-cyan-500 hover:bg-cyan-400 text-black font-extrabold text-xs transition-all shadow-lg shadow-cyan-500/25 active:scale-95 cursor-pointer"
+              >
+                ⏭️ Skip to Next Song
+              </button>
+            )}
+            <a
+              href={`https://www.youtube.com/watch?v=${videoId}`}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="px-4 py-2 rounded-xl bg-white/10 hover:bg-white/20 text-white font-bold text-xs transition-all border border-white/15"
+            >
+              Open on YouTube
+            </a>
+          </div>
         </div>
       )}
 
@@ -377,15 +409,35 @@ export function YouTubePlayer({
         />
       )}
 
-      {/* Bottom-Right YouTube Logo & 'More Videos' Click Shield */}
+      {/* Bottom-Right YouTube Logo & 'More Videos' Click Shield (Blocks popup & YouTube link) */}
       {!embedError && (
         <div
-          className="absolute bottom-0 right-12 w-64 h-14 z-20 pointer-events-auto bg-transparent"
+          className="absolute bottom-0 right-0 w-80 h-16 z-20 pointer-events-auto bg-transparent cursor-default"
           onClick={(e) => {
             e.preventDefault();
             e.stopPropagation();
           }}
         />
+      )}
+
+      {/* Full Screen Toggle Button */}
+      {!embedError && (
+        <button
+          type="button"
+          onClick={toggleFullscreen}
+          title={isFullscreen ? 'Exit Full Screen' : 'Full Screen'}
+          className="absolute top-2.5 right-2.5 z-30 p-2 rounded-xl bg-black/60 hover:bg-cyan-500/30 text-white/80 hover:text-cyan-300 border border-white/15 backdrop-blur-md transition-all active:scale-95 shadow-lg cursor-pointer"
+        >
+          {isFullscreen ? (
+            <svg className="w-4 h-4 fill-none stroke-current stroke-2" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" d="M9 9L4 4m0 0v5m0-5h5m6 6l5-5m0 0v5m0-5h-5m-6 6l-5 5m0 0v-5m0 5h5m6-6l5 5m0 0v-5m0 5h-5" />
+            </svg>
+          ) : (
+            <svg className="w-4 h-4 fill-none stroke-current stroke-2" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" d="M4 8V4m0 0h4M4 4l5 5m11-5h-4m4 0v4m0-4l-5 5M4 16v4m0 0h4m-4 0l5-5m11 5l-5-5m5 5v-4m0 4h-4" />
+            </svg>
+          )}
+        </button>
       )}
 
       {/* Paused Screen Overlay: Shields YouTube 'More Videos' grid & allows instant 1-click animated resume */}
