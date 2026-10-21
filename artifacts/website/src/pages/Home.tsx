@@ -185,6 +185,35 @@ export default function Home() {
     }, 1800);
   };
 
+  // Auto-play music when entering the site
+  useEffect(() => {
+    const tryAutoplay = () => {
+      if (!audioRef.current || isPlaying) return;
+      audioRef.current.play().then(() => {
+        setIsPlaying(true);
+      }).catch(() => {
+        // Modern browsers block sound until any user interaction on document
+        const onFirstInteraction = () => {
+          if (audioRef.current && !isPlaying) {
+            audioRef.current.play().then(() => {
+              setIsPlaying(true);
+            }).catch(() => {});
+          }
+          window.removeEventListener('click', onFirstInteraction);
+          window.removeEventListener('keydown', onFirstInteraction);
+          window.removeEventListener('touchstart', onFirstInteraction);
+          window.removeEventListener('scroll', onFirstInteraction);
+        };
+        window.addEventListener('click', onFirstInteraction, { once: true });
+        window.addEventListener('keydown', onFirstInteraction, { once: true });
+        window.addEventListener('touchstart', onFirstInteraction, { once: true });
+        window.addEventListener('scroll', onFirstInteraction, { once: true });
+      });
+    };
+
+    tryAutoplay();
+  }, []);
+
   const togglePlayAudio = () => {
     if (!audioRef.current) return;
     if (isPlaying) {
@@ -472,7 +501,7 @@ export default function Home() {
               <audio
                 ref={audioRef}
                 src="/audio/chill-lofi-beats.mp3"
-                preload="metadata"
+                preload="auto"
                 loop
                 onTimeUpdate={handleAudioTimeUpdate}
                 onLoadedMetadata={handleAudioLoadedMetadata}
