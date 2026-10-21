@@ -312,7 +312,7 @@ export default function Login() {
 
           <div className="mt-3 flex items-center justify-center gap-1.5 text-[10px] font-semibold text-cyan-200/45 text-center">
             <ShieldCheck className="w-3 h-3 shrink-0" />
-            <span>Google sign-in coming soon · Site admin? Sign in with the <span className="font-mono">admin</span> account.</span>
+            <span>Google sign-in coming soon · Already have an account? Use the Sign in tab.</span>
           </div>
         </div>
 
