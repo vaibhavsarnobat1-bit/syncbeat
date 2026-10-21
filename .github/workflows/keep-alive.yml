@@ -5,7 +5,7 @@ name: Keep SyncBeat awake
 # often enough that the service stays warm.
 on:
   schedule:
-    - cron: "*/10 * * * *"
+    - cron: "*/5 * * * *"
   workflow_dispatch:
 
 jobs:
