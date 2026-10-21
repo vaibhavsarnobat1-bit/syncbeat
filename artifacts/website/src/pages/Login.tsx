@@ -223,7 +223,7 @@ export default function Login() {
                 autoComplete="username"
                 spellCheck={false}
                 id="field-username"
-                placeholder="e.g. rahul_92"
+                placeholder="e.g. user"
                 className="mt-1.5 w-full px-3.5 py-3 rounded-xl bg-black/50 border border-white/10 text-sm text-white placeholder:text-white/25 outline-none focus:border-cyan-400/60 focus:bg-black/70 focus:ring-2 focus:ring-cyan-500/20 transition-all"
               />
               {mode === 'signup' && nameCheck.state !== 'idle' && (

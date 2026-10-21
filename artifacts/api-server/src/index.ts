@@ -23,6 +23,7 @@ async function boot() {
     console.log("[Server] Database ready — rooms and chat will persist");
   } else {
     console.warn(`[Server] Running memory-only: ${dbStatus().lastError || "no DATABASE_URL"}`);
+    await bootstrapAdmin();
   }
 
   server.listen(effectivePort, () => {

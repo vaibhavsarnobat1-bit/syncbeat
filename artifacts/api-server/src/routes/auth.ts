@@ -1,6 +1,8 @@
 import { Router, type IRouter, type Request, type Response } from "express";
 import {
   createSession,
+  getUserById,
+  isUsernameAvailable,
   loginUser,
   normalizeUsername,
   registerUser,
@@ -10,7 +12,6 @@ import {
   validCredentials,
   type AuthedRequest,
 } from "../lib/auth.js";
-import { dbUnavailable, query, queryOne } from "../lib/db.js";
 
 const router: IRouter = Router();
 
@@ -28,23 +29,19 @@ function throttled(key: string, limit: number, windowMs: number): boolean {
   return entry.count > limit;
 }
 
-function sessionPayload(row: Record<string, unknown>, token: string) {
-  return {
-    token,
-    userId: row.id,
-    username: row.username,
-    displayName: row.display_name,
-    avatarColor: row.avatar_color,
-    role: row.role,
-    email: row.email ?? undefined,
-    photoUrl: row.photo_url ?? undefined,
-  };
-}
-
 async function issueToken(userId: string) {
   const token = await createSession(userId);
-  const row = await queryOne<Record<string, unknown>>(`SELECT * FROM users WHERE id=$1`, [userId]);
-  return row ? sessionPayload(row, token) : null;
+  const user = await getUserById(userId);
+  return user ? {
+    token,
+    userId: user.id,
+    username: user.username,
+    displayName: user.displayName,
+    avatarColor: user.avatarColor,
+    role: user.role,
+    email: user.email ?? undefined,
+    photoUrl: user.photoUrl ?? undefined,
+  } : null;
 }
 
 router.get("/username/:username/available", async (req: Request, res: Response) => {
@@ -53,10 +50,8 @@ router.get("/username/:username/available", async (req: Request, res: Response) 
     res.json({ available: false, reason: "Username must be 3-24 characters: letters, numbers, . _ -" });
     return;
   }
-  const down = dbUnavailable();
-  if (down) { res.status(503).json({ available: false, offline: true, reason: "Accounts are temporarily offline on this server." }); return; }
-  const row = await queryOne<Record<string, unknown>>(`SELECT COUNT(*)::text c FROM users WHERE username=$1`, [username]);
-  res.json({ available: Number(row?.c ?? 0) === 0 });
+  const available = await isUsernameAvailable(username);
+  res.json({ available });
 });
 
 const NAME_PATTERN = /^[a-z0-9_.-]{3,24}$/;
@@ -83,15 +78,15 @@ router.get("/username/:username/suggestions", async (req: Request, res: Response
     res.json({ suggestions: [] });
     return;
   }
-  const down = dbUnavailable();
-  if (down) {
-    res.status(503).json({ suggestions: [], reason: "Accounts are temporarily offline on this server." });
-    return;
-  }
   const wanted = candidateNames(username);
-  const taken = await query<Record<string, unknown>>(`SELECT username FROM users WHERE username = ANY($1)`, [wanted]);
-  const busy = new Set(taken.map((r) => String(r.username)));
-  res.json({ suggestions: wanted.filter((n) => !busy.has(n)).slice(0, 3) });
+  const suggestions: string[] = [];
+  for (const name of wanted) {
+    if (await isUsernameAvailable(name)) {
+      suggestions.push(name);
+      if (suggestions.length >= 3) break;
+    }
+  }
+  res.json({ suggestions });
 });
 
 router.post("/register", async (req: Request, res: Response) => {
@@ -100,11 +95,6 @@ router.post("/register", async (req: Request, res: Response) => {
   const problem = validCredentials(username, password);
   if (problem) {
     res.status(400).json({ error: problem });
-    return;
-  }
-  const down = dbUnavailable();
-  if (down) {
-    res.status(503).json({ error: "Accounts can't be created right now — this server has no database connected." });
     return;
   }
   if (throttled(`register:${req.ip}`, 10, 10 * 60 * 1000)) {
@@ -128,11 +118,6 @@ router.post("/register", async (req: Request, res: Response) => {
 router.post("/login", async (req: Request, res: Response) => {
   const username = normalizeUsername(req.body?.username);
   const password = String(req.body?.password ?? "");
-  const down = dbUnavailable();
-  if (down) {
-    res.status(503).json({ error: "Sign-in can't be verified right now — this server has no database connected." });
-    return;
-  }
   if (throttled(`login:${req.ip}:${username}`, 8, 10 * 60 * 1000)) {
     res.status(429).json({ error: "Too many attempts. Try again in a few minutes." });
     return;
