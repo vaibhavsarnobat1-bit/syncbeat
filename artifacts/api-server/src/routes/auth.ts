@@ -10,7 +10,7 @@ import {
   validCredentials,
   type AuthedRequest,
 } from "../lib/auth.js";
-import { queryOne } from "../lib/db.js";
+import { dbUnavailable, queryOne } from "../lib/db.js";
 
 const router: IRouter = Router();
 
@@ -53,6 +53,8 @@ router.get("/username/:username/available", async (req: Request, res: Response) 
     res.json({ available: false, reason: "Username must be 3-24 characters: letters, numbers, . _ -" });
     return;
   }
+  const down = dbUnavailable();
+  if (down) { res.status(503).json({ available: false, reason: "Accounts are briefly unavailable on this server." }); return; }
   const row = await queryOne<Record<string, unknown>>(`SELECT COUNT(*)::text c FROM users WHERE username=$1`, [username]);
   res.json({ available: Number(row?.c ?? 0) === 0 });
 });
@@ -63,6 +65,11 @@ router.post("/register", async (req: Request, res: Response) => {
   const problem = validCredentials(username, password);
   if (problem) {
     res.status(400).json({ error: problem });
+    return;
+  }
+  const down = dbUnavailable();
+  if (down) {
+    res.status(503).json({ error: "Accounts can't be created right now — this server has no database connected." });
     return;
   }
   if (throttled(`register:${req.ip}`, 10, 10 * 60 * 1000)) {
@@ -86,6 +93,11 @@ router.post("/register", async (req: Request, res: Response) => {
 router.post("/login", async (req: Request, res: Response) => {
   const username = normalizeUsername(req.body?.username);
   const password = String(req.body?.password ?? "");
+  const down = dbUnavailable();
+  if (down) {
+    res.status(503).json({ error: "Sign-in can't be verified right now — this server has no database connected." });
+    return;
+  }
   if (throttled(`login:${req.ip}:${username}`, 8, 10 * 60 * 1000)) {
     res.status(429).json({ error: "Too many attempts. Try again in a few minutes." });
     return;

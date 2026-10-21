@@ -29,6 +29,16 @@ export function dbStatus() {
   return { configured: !!pool, degraded: Date.now() < dbBrokenUntil, lastError: lastDbError };
 }
 
+/**
+ * `query` deliberately returns an empty row set when the database is missing or failing, so callers
+ * that read "no rows" as "not found" must rule this out first.
+ */
+export function dbUnavailable(): string | null {
+  if (!pool) return "DATABASE_URL is not configured";
+  if (Date.now() < dbBrokenUntil) return `database unreachable (${lastDbError || "retrying"})`;
+  return null;
+}
+
 export async function query<T = Record<string, unknown>>(sql: string, params?: unknown[]): Promise<T[]> {
   if (!pool) return [];
   if (Date.now() < dbBrokenUntil) return [];
