@@ -10,15 +10,6 @@ services:
     envVars:
       - key: NODE_ENV
         value: production
-      - key: DATABASE_URL
-        fromDatabase:
-          name: syncbeat-db
-          property: connectionString
       - key: ADMIN_SECRET
         value: Vaibhav@2004
 
-databases:
-  - name: syncbeat-db
-    databaseName: syncbeat
-    user: syncbeat
-    plan: free
