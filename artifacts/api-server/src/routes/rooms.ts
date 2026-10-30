@@ -89,12 +89,17 @@ router.post(
 );
 
 router.get("/:inviteCode/media/:mediaId", async (req: AuthedRequest, res: Response) => {
-  const caller = await resolveToken(String(req.query.t ?? ""));
-  if (!caller) { res.status(401).json({ error: "Sign in required" }); return; }
-
   const file = await getMediaFile(param(req, "mediaId"));
-  if (!file || file.meta.roomInviteCode !== param(req, "inviteCode")) {
+  if (!file) {
     res.status(404).json({ error: "Song not found" });
+    return;
+  }
+
+  // Verify the room exists
+  const inviteCode = param(req, "inviteCode");
+  const room = await resolveRoom(inviteCode);
+  if (!room) {
+    res.status(404).json({ error: "Room not found" });
     return;
   }
 

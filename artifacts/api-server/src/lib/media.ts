@@ -15,6 +15,7 @@ export interface MediaMeta {
 }
 
 const blobs = new Map<string, Buffer>();
+const metas = new Map<string, MediaMeta>();
 
 function rowToMeta(row: Record<string, unknown>): MediaMeta {
   return {
@@ -48,41 +49,52 @@ export async function saveMediaFile(input: {
     createdAt: Date.now(),
   };
   blobs.set(meta.id, input.data);
-  await query(
-    `INSERT INTO media_files (id, room_invite_code, uploader_user_id, title, mime, size, duration, data, created_at)
-     VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9) ON CONFLICT (id) DO NOTHING`,
-    [
-      meta.id, meta.roomInviteCode, meta.uploaderUserId, meta.title, meta.mime,
-      meta.size, meta.duration, input.data, meta.createdAt,
-    ]
-  );
+  metas.set(meta.id, meta);
+  try {
+    await query(
+      `INSERT INTO media_files (id, room_invite_code, uploader_user_id, title, mime, size, duration, data, created_at)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9) ON CONFLICT (id) DO NOTHING`,
+      [
+        meta.id, meta.roomInviteCode, meta.uploaderUserId, meta.title, meta.mime,
+        meta.size, meta.duration, input.data, meta.createdAt,
+      ]
+    );
+  } catch (err) {
+    // If DB is offline, memory cache holds the audio and meta
+  }
   return meta;
 }
 
 export async function getMediaFile(id: string): Promise<{ meta: MediaMeta; data: Buffer } | null> {
-  const cached = blobs.get(id);
-  const row = await queryOne<Record<string, unknown>>(
-    cached
-      ? `SELECT id, room_invite_code, uploader_user_id, title, mime, size, duration, created_at
-         FROM media_files WHERE id=$1`
-      : `SELECT * FROM media_files WHERE id=$1`,
-    [id]
-  );
-  if (row) {
-    if (!cached) {
+  const cachedBlob = blobs.get(id);
+  const cachedMeta = metas.get(id);
+
+  if (cachedBlob && cachedMeta) {
+    return { meta: cachedMeta, data: cachedBlob };
+  }
+
+  try {
+    const row = await queryOne<Record<string, unknown>>(
+      `SELECT * FROM media_files WHERE id=$1`,
+      [id]
+    );
+    if (row) {
+      const meta = rowToMeta(row);
       const raw = row.data;
       const buf = Buffer.isBuffer(raw) ? raw : Buffer.from(String(raw), "base64");
       blobs.set(id, buf);
+      metas.set(id, meta);
+      return { meta, data: buf };
     }
-    return { meta: rowToMeta(row), data: blobs.get(id) as Buffer };
-  }
-  if (cached) {
+  } catch {}
+
+  if (cachedBlob) {
     return {
-      meta: {
+      meta: cachedMeta || {
         id, roomInviteCode: "", uploaderUserId: "", title: "Device Song",
-        mime: "audio/mpeg", size: cached.length, duration: 0, createdAt: Date.now(),
+        mime: "audio/mpeg", size: cachedBlob.length, duration: 0, createdAt: Date.now(),
       },
-      data: cached,
+      data: cachedBlob,
     };
   }
   return null;

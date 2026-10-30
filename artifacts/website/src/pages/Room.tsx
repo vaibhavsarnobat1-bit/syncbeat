@@ -272,6 +272,7 @@ export default function RoomPage() {
   // room so every member hears the same file.
   const [localFiles, setLocalFiles] = useState<DeviceFile[]>([]);
   const [localAudioEl] = useState(() => (typeof Audio !== 'undefined' ? new Audio() : null));
+  const [audioBlocked, setAudioBlocked] = useState(false);
   const [deviceBusy, setDeviceBusy] = useState<string | null>(null);
   const [deviceNote, setDeviceNote] = useState<string | null>(null);
   const localFileInputRef = useRef<HTMLInputElement>(null);
@@ -664,6 +665,7 @@ export default function RoomPage() {
     if (!localAudioEl) return;
     if (!deviceMediaId) {
       localAudioEl.pause();
+      setAudioBlocked(false);
       return;
     }
     const own = localFiles.find((f) => f.mediaId === deviceMediaId);
@@ -672,9 +674,30 @@ export default function RoomPage() {
       deviceSrcRef.current = src;
       localAudioEl.src = src;
     }
-    if (activeRoom.isPlaying) void localAudioEl.play().catch(() => {});
-    else localAudioEl.pause();
+    if (activeRoom.isPlaying) {
+      localAudioEl.play().then(() => setAudioBlocked(false)).catch(() => {
+        setAudioBlocked(true);
+      });
+    } else {
+      localAudioEl.pause();
+      setAudioBlocked(false);
+    }
   }, [localAudioEl, deviceMediaId, inviteCode, localFiles, activeRoom.isPlaying]);
+
+  // Global user interaction listener to unblock mobile autoplay for Device songs
+  useEffect(() => {
+    const handleUserInteraction = () => {
+      if (localAudioEl && activeRoom?.isPlaying && deviceMediaId && localAudioEl.paused) {
+        localAudioEl.play().then(() => setAudioBlocked(false)).catch(() => {});
+      }
+    };
+    window.addEventListener('click', handleUserInteraction);
+    window.addEventListener('touchstart', handleUserInteraction);
+    return () => {
+      window.removeEventListener('click', handleUserInteraction);
+      window.removeEventListener('touchstart', handleUserInteraction);
+    };
+  }, [localAudioEl, activeRoom?.isPlaying, deviceMediaId]);
 
   useEffect(() => {
     if (!localAudioEl || !deviceMediaId || !remotePlayerState) return;
@@ -690,14 +713,15 @@ export default function RoomPage() {
     try {
       if (remotePlayerState.action === 'pause') {
         localAudioEl.pause();
-        if (Math.abs(localAudioEl.currentTime - sent) > 0.35) seekTo(sent);
+        setAudioBlocked(false);
+        if (Math.abs(localAudioEl.currentTime - sent) > 0.5) seekTo(sent);
       } else if (remotePlayerState.action === 'play') {
-        if (Math.abs(localAudioEl.currentTime - target) > 0.12) seekTo(target);
-        void localAudioEl.play().catch(() => {});
+        if (Math.abs(localAudioEl.currentTime - target) > 1.2) seekTo(target);
+        localAudioEl.play().then(() => setAudioBlocked(false)).catch(() => setAudioBlocked(true));
       } else if (remotePlayerState.action === 'seek') {
         seekTo(sent);
       } else if (remotePlayerState.action === 'sync_tick' && !isHost) {
-        if (!localAudioEl.paused && Math.abs(localAudioEl.currentTime - target) > 0.18) seekTo(target);
+        if (!localAudioEl.paused && Math.abs(localAudioEl.currentTime - target) > 1.8) seekTo(target);
       }
     } catch {}
   }, [localAudioEl, deviceMediaId, remotePlayerState, isHost]);
@@ -1539,11 +1563,21 @@ export default function RoomPage() {
                     <p className="text-[11px] text-muted-foreground mt-1.5">
                       {deviceTrack.uploadedBy ? `From ${deviceTrack.uploadedBy}'s device` : "From a member's device"} · {members.length} {members.length === 1 ? 'person' : 'people'} listening
                     </p>
-                    {deviceTrack.uploadedBy && deviceTrack.uploadedBy !== user?.displayName && (
+                    {audioBlocked ? (
+                      <button
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          localAudioEl?.play().then(() => setAudioBlocked(false)).catch(() => {});
+                        }}
+                        className="mt-3 px-4 py-2 bg-gradient-to-r from-emerald-500 to-cyan-500 text-black font-extrabold text-xs rounded-full shadow-lg shadow-cyan-500/30 flex items-center gap-2 animate-bounce"
+                      >
+                        🔊 Tap to Start Sound (Mobile Audio)
+                      </button>
+                    ) : deviceTrack.uploadedBy && deviceTrack.uploadedBy !== user?.displayName ? (
                       <p className="text-[10px] text-emerald-400/80 mt-3 font-semibold">
                         Streaming the copy they shared — no file needed on your phone
                       </p>
-                    )}
+                    ) : null}
                   </div>
                 ) : activeRoom.currentTrack ? (
                   <>

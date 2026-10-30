@@ -50,6 +50,7 @@ export function YouTubePlayer({
   const containerRef = useRef<HTMLDivElement>(null);
   const [isApiReady, setIsApiReady] = useState(!!window.YT?.Player);
   const remoteLockUntilRef = useRef<number>(0);
+  const lastSyncTickSeekRef = useRef<number>(0);
   const lastReportedStateRef = useRef<'play' | 'pause' | null>(null);
   const currentVideoIdRef = useRef<string>(videoId);
   const [embedError, setEmbedError] = useState<number | null>(null);
@@ -315,15 +316,15 @@ export function YouTubePlayer({
         }
       }
     } else if (remoteState.action === 'play') {
-      // 1. Calculate ultra-precise network latency compensation
+      // 1. Calculate network latency compensation
       remoteLockUntilRef.current = Date.now() + 1000;
       lastReportedStateRef.current = 'play';
       const latency = Math.max(0, (Date.now() - (remoteState.timestamp || Date.now())) / 1000);
       const target = (remoteState.currentTime || 0) + (latency < 2 ? latency : 0);
       const current = playerRef.current.getCurrentTime?.() ?? 0;
 
-      // Frame align immediately if drift > 120ms to eliminate delay
-      if (Math.abs(current - target) > 0.12) {
+      // Only seek if drift > 1.2s to prevent mobile buffering loops
+      if (Math.abs(current - target) > 1.2) {
         try {
           playerRef.current.seekTo(target, true);
         } catch {}
@@ -338,16 +339,17 @@ export function YouTubePlayer({
       } catch {}
     } else if (remoteState.action === 'sync_tick') {
       // 🔄 CONTINUOUS HEARTBEAT AUTO-ALIGNMENT
-      // If playing, check drift against calculated expected time:
+      // Only align if playing smoothly and NOT in buffering state
       if (isPlaying && state === window.YT.PlayerState.PLAYING) {
         const latency = Math.max(0, (Date.now() - (remoteState.timestamp || Date.now())) / 1000);
         const expected = remoteState.currentTime + (latency < 2 ? latency : 0);
         const current = playerRef.current.getCurrentTime?.() ?? 0;
         const drift = Math.abs(current - expected);
 
-        // Auto-correct if drift exceeds 180ms so other device catches up instantly
-        if (drift > 0.18) {
-          remoteLockUntilRef.current = Date.now() + 600;
+        // Smooth buffer: only align if drift exceeds 1.8s and throttle to once every 4 seconds
+        if (drift > 1.8 && Date.now() - lastSyncTickSeekRef.current > 4000) {
+          lastSyncTickSeekRef.current = Date.now();
+          remoteLockUntilRef.current = Date.now() + 800;
           try {
             playerRef.current.seekTo(expected, true);
           } catch {}
