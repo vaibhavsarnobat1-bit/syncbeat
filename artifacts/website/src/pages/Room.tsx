@@ -275,6 +275,7 @@ export default function RoomPage() {
   const [audioBlocked, setAudioBlocked] = useState(false);
   const [deviceBusy, setDeviceBusy] = useState<string | null>(null);
   const [deviceNote, setDeviceNote] = useState<string | null>(null);
+  const [showMobileFileGuide, setShowMobileFileGuide] = useState(false);
   const localFileInputRef = useRef<HTMLInputElement>(null);
   const playerControlRef = useRef<PlayerControls | null>(null);
 
@@ -2042,7 +2043,15 @@ export default function RoomPage() {
                 </div>
                 <button
                   type="button"
-                  onClick={() => localFileInputRef.current?.click()}
+                  onClick={() => {
+                    // On mobile: show quick guide first, then open picker
+                    const isMobile = /android|iphone|ipad|ipod/i.test(navigator.userAgent);
+                    if (isMobile) {
+                      setShowMobileFileGuide(true);
+                    } else {
+                      localFileInputRef.current?.click();
+                    }
+                  }}
                   className="chip-pop flex items-center gap-1 px-2.5 py-1 rounded-lg bg-cyan-500/10 hover:bg-cyan-500/20 text-cyan-400 border border-cyan-400/25 text-[10px] font-bold shrink-0"
                 >
                   🎵 Add Song
@@ -2055,11 +2064,79 @@ export default function RoomPage() {
                   className="hidden"
                   onChange={handleLocalFileSelect}
                 />
+
+                {/* 📱 Mobile File Guide Bottom Sheet */}
+                <AnimatePresence>
+                  {showMobileFileGuide && (
+                    <motion.div
+                      initial={{ opacity: 0 }}
+                      animate={{ opacity: 1 }}
+                      exit={{ opacity: 0 }}
+                      className="fixed inset-0 z-[999] bg-black/70 backdrop-blur-sm flex items-end"
+                      onClick={() => setShowMobileFileGuide(false)}
+                    >
+                      <motion.div
+                        initial={{ y: 300 }}
+                        animate={{ y: 0 }}
+                        exit={{ y: 300 }}
+                        transition={{ type: 'spring', damping: 25 }}
+                        onClick={(e) => e.stopPropagation()}
+                        className="w-full bg-[#0d1525] rounded-t-3xl border-t border-cyan-500/20 p-5 pb-8"
+                      >
+                        <div className="w-10 h-1 bg-white/20 rounded-full mx-auto mb-5" />
+                        <p className="text-white font-extrabold text-base mb-1">📱 Mobile Pe Song Kaise Add Karo?</p>
+                        <p className="text-white/50 text-xs mb-5">Files app mein "No items" aata hai? Yeh guide follow karo:</p>
+
+                        {/* Step 1 */}
+                        <div className="flex items-start gap-3 mb-4">
+                          <div className="w-7 h-7 rounded-full bg-cyan-500 text-black font-extrabold text-xs flex items-center justify-center shrink-0">1</div>
+                          <div>
+                            <p className="text-white font-bold text-sm">"Files" tap karo</p>
+                            <p className="text-white/50 text-xs">Neeche wala button tap karne ke baad Files select karo</p>
+                          </div>
+                        </div>
+
+                        {/* Step 2 */}
+                        <div className="flex items-start gap-3 mb-4">
+                          <div className="w-7 h-7 rounded-full bg-cyan-500 text-black font-extrabold text-xs flex items-center justify-center shrink-0">2</div>
+                          <div>
+                            <p className="text-white font-bold text-sm">☰ (3 lines) tap karo — top left</p>
+                            <p className="text-white/50 text-xs">Files app ka menu khulega</p>
+                          </div>
+                        </div>
+
+                        {/* Step 3 */}
+                        <div className="flex items-start gap-3 mb-5">
+                          <div className="w-7 h-7 rounded-full bg-cyan-500 text-black font-extrabold text-xs flex items-center justify-center shrink-0">3</div>
+                          <div>
+                            <p className="text-white font-bold text-sm">"Audio" category select karo</p>
+                            <p className="text-white/50 text-xs">Saare downloaded songs wahan milenge! 🎵</p>
+                          </div>
+                        </div>
+
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setShowMobileFileGuide(false);
+                            setTimeout(() => localFileInputRef.current?.click(), 100);
+                          }}
+                          className="w-full py-3.5 rounded-2xl bg-gradient-to-r from-cyan-500 to-blue-600 text-black font-extrabold text-sm shadow-lg shadow-cyan-500/30 active:scale-95 transition-all"
+                        >
+                          ✅ Samajh Gaya — Files Kholo
+                        </button>
+                      </motion.div>
+                    </motion.div>
+                  )}
+                </AnimatePresence>
               </div>
 
               {localFiles.length === 0 ? (
                 <div
-                  onClick={() => localFileInputRef.current?.click()}
+                  onClick={() => {
+                    const isMobile = /android|iphone|ipad|ipod/i.test(navigator.userAgent);
+                    if (isMobile) setShowMobileFileGuide(true);
+                    else localFileInputRef.current?.click();
+                  }}
                   className="py-6 flex flex-col items-center justify-center gap-2 text-white/20 hover:text-white/40 transition-colors cursor-pointer group"
                   style={{ perspective: '700px' }}
                 >
