@@ -1,12 +1,15 @@
 import { Router, type IRouter } from "express";
+import YouTube from "youtube-sr";
 // @ts-ignore — ytsr is a CJS module without bundled types
 import ytsr from "ytsr";
 
 const router: IRouter = Router();
 
-// ── Artist name expansion ──────────────────────────────────────────────────
+// ── Artist name expansion & common spelling correction ──────────────────────
 const ARTIST_MAPPING: Record<string, string> = {
   "arijit": "Arijit Singh",
+  "arijeet": "Arijit Singh",
+  "arjit": "Arijit Singh",
   "jubin": "Jubin Nautiyal",
   "neha": "Neha Kakkar",
   "darshan": "Darshan Raval",
@@ -16,9 +19,12 @@ const ARTIST_MAPPING: Record<string, string> = {
   "rahat": "Rahat Fateh Ali Khan",
   "honey": "Yo Yo Honey Singh",
   "badshah": "Badshah",
+  "badsha": "Badshah",
   "diljit": "Diljit Dosanjh",
+  "daljit": "Diljit Dosanjh",
   "ap dhillon": "AP Dhillon",
   "karan aujla": "Karan Aujla",
+  "sidhu": "Sidhu Moose Wala",
   "lata": "Lata Mangeshkar",
   "asha": "Asha Bhosle",
   "kishore": "Kishore Kumar",
@@ -40,10 +46,16 @@ const ARTIST_MAPPING: Record<string, string> = {
   "nucleya": "Nucleya",
   "prateek": "Prateek Kuhad",
   "sunidhi": "Sunidhi Chauhan",
+  "sundhi": "Sunidhi Chauhan",
+  "chouhan": "Sunidhi Chauhan",
   "shankar": "Shankar Mahadevan",
   "mohit": "Mohit Chauhan",
   "lucky ali": "Lucky Ali",
   "shaan": "Shaan",
+  "anuv": "Anuv Jain",
+  "mc stan": "MC Stan",
+  "talwinder": "Talwiinder",
+  "talwiinder": "Talwiinder",
 };
 
 // Detect Devanagari (Hindi) script
@@ -62,17 +74,17 @@ function buildQuery(q: string): string {
   if (/^(punjabi|punjabi songs?|all punjabi songs?)$/.test(lower)) return "latest punjabi hit songs 2024 2025 official music video";
   if (/^(bhojpuri|bhojpuri songs?)$/.test(lower)) return "superhit bhojpuri songs 2024 official music video";
 
-  // Artist mapping: partial name → full name + popular songs
+  // Artist mapping: partial name or misspelling → canonical full name + songs
   for (const [key, fullName] of Object.entries(ARTIST_MAPPING)) {
     if (lower.includes(key)) {
-      return `${fullName} best songs hits official video`;
+      return `${fullName} hit songs official video`;
     }
   }
 
   // Hindi Devanagari query
   if (isHindi(q)) return `${q} latest song official video`;
 
-  // Short query (1-3 words) without song keywords → treat as artist
+  // Short query (1-3 words) without song keywords → treat as music search
   const keywords = ["song","lyrics","feat","ft.","remix","official","video","audio","full","cover","#"];
   const isSpecific = keywords.some(k => lower.includes(k));
   const wordCount = q.trim().split(/\s+/).length;
@@ -105,27 +117,67 @@ function parseDuration(dur: string | null | undefined): number {
   return 0;
 }
 
-async function searchYT(query: string, limit = 15) {
-  const filters = await ytsr.getFilters(query);
-  const videoFilter = filters.get("Type")?.get("Video");
-  const searchOpts = { limit: limit * 3, gl: "IN", hl: "en" }; // Fetch more to account for strict filtering
-  const url = videoFilter?.url ?? query;
-  const results = await ytsr(url, searchOpts);
-  
-  // Words that indicate a list/playlist instead of a single song
-  const BAD_WORDS = ["jukebox", "mashup", "nonstop", "collection", "best of", "top 10", "top 20", "top 50", "audiobox"];
+const BAD_WORDS = ["jukebox", "nonstop", "audiobox", "1 hour", "2 hours", "3 hours", "full album", "all songs collection"];
 
-  return (results.items as any[])
-    .map(parseItem)
-    .filter(item => {
-      if (!item || item.duration <= 0 || item.duration > 420000) return false; // MUST be under 7 minutes
-      const lowerTitle = item.title.toLowerCase();
-      if (BAD_WORDS.some(w => lowerTitle.includes(w))) return false; // Reject compilations
-      return true;
-    })
-    .slice(0, limit) as {
-      videoId: string; title: string; thumbnail: string; duration: number; channel: string;
-    }[];
+async function searchYT(query: string, limit = 15) {
+  // 1. Primary engine: youtube-sr (fastest, uses YouTube innertube API, handles typos)
+  try {
+    const srResults = await YouTube.search(query, {
+      limit: limit * 2,
+      type: "video",
+      safeSearch: false,
+    });
+
+    if (srResults && srResults.length > 0) {
+      const parsed = srResults
+        .filter((v) => {
+          if (!v || !v.id || !v.title) return false;
+          // Filter out videos longer than 8 minutes (compilations/jukeboxes)
+          if (v.duration && (v.duration <= 0 || v.duration > 480000)) return false;
+          const lower = v.title.toLowerCase();
+          if (BAD_WORDS.some((w) => lower.includes(w))) return false;
+          return true;
+        })
+        .slice(0, limit)
+        .map((v) => ({
+          videoId: v.id!,
+          title: v.title!,
+          thumbnail: v.thumbnail?.url || `https://i.ytimg.com/vi/${v.id}/hqdefault.jpg`,
+          duration: v.duration || 0,
+          channel: v.channel?.name || "",
+        }));
+
+      if (parsed.length > 0) {
+        return parsed;
+      }
+    }
+  } catch (err) {
+    console.warn("[Search] youtube-sr failed, attempting ytsr fallback:", err);
+  }
+
+  // 2. Fallback engine: direct ytsr without getFilters (resilient against DOM changes)
+  try {
+    const results = await ytsr(query, { limit: limit * 2, gl: "IN", hl: "en" });
+    const parsed = (results.items as any[])
+      .map(parseItem)
+      .filter((item) => {
+        if (!item || item.duration <= 0 || item.duration > 480000) return false;
+        const lowerTitle = item.title.toLowerCase();
+        if (BAD_WORDS.some((w) => lowerTitle.includes(w))) return false;
+        return true;
+      })
+      .slice(0, limit) as {
+        videoId: string; title: string; thumbnail: string; duration: number; channel: string;
+      }[];
+
+    if (parsed.length > 0) {
+      return parsed;
+    }
+  } catch (err) {
+    console.warn("[Search] ytsr fallback failed:", err);
+  }
+
+  return [];
 }
 
 // ── GET /api/search?q= ─────────────────────────────────────────────────────
@@ -139,7 +191,7 @@ router.get("/", async (req, res) => {
     res.json({ results: videos });
   } catch (err) {
     console.error("YouTube search error:", err);
-    res.status(500).json({ error: "Search failed" });
+    res.json({ results: [] });
   }
 });
 
