@@ -721,7 +721,7 @@ export default function RoomPage() {
       } else if (remotePlayerState.action === 'seek') {
         seekTo(sent);
       } else if (remotePlayerState.action === 'sync_tick' && !isHost) {
-        if (!localAudioEl.paused && Math.abs(localAudioEl.currentTime - target) > 1.8) seekTo(target);
+        if (!localAudioEl.paused && Math.abs(localAudioEl.currentTime - target) > 4.0) seekTo(target);
       }
     } catch {}
   }, [localAudioEl, deviceMediaId, remotePlayerState, isHost]);
@@ -848,7 +848,7 @@ export default function RoomPage() {
     }
   }, [activeRoom?.isPlaying, activeRoom?.currentTrack?.title, activeRoom?.currentTrack?.videoId]);
 
-  // Continuous Zero-Drift Heartbeat: Host broadcasts real-time timestamp every 1.2s for instant alignment
+  // Continuous Zero-Drift Heartbeat: Host broadcasts real-time timestamp every 6s for alignment without stutter
   useEffect(() => {
     if (!isHost || !activeRoom?.isPlaying || !activeRoom?.currentTrack || !isConnected) return;
 
@@ -857,7 +857,7 @@ export default function RoomPage() {
       if (typeof cur === 'number' && cur > 0) {
         send({ type: 'sync_tick', currentTime: cur, timestamp: Date.now() });
       }
-    }, 1200);
+    }, 6000);
 
     return () => clearInterval(interval);
   }, [isHost, activeRoom?.isPlaying, activeRoom?.currentTrack, isConnected, send, deviceTrack, localAudioEl]);

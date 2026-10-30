@@ -34,6 +34,7 @@ interface YouTubePlayerProps {
 export function YouTubePlayer({
   videoId,
   isPlaying,
+  isHost,
   onPlay,
   onPause,
   onReady,
@@ -247,18 +248,22 @@ export function YouTubePlayer({
           if (event.data === window.YT.PlayerState.PLAYING) {
             if (lastReportedStateRef.current !== 'play') {
               lastReportedStateRef.current = 'play';
-              onPlay(currentTime);
+              // Only host or explicit user actions should broadcast play to the room
+              // Listeners recovering from a buffer must NEVER overwrite room time!
+              if (isHost) {
+                onPlay(currentTime);
+              }
             }
           } else if (event.data === window.YT.PlayerState.PAUSED) {
-            // CRITICAL: When user switches apps or minimizes browser, document.hidden becomes true.
-            // On mobile browsers, YouTube iframe automatically fires PAUSED.
-            // We MUST NOT broadcast pause to other devices just because one user switched to WhatsApp or background!
+            // When user switches apps or minimizes browser, document.hidden becomes true.
             if (typeof document !== 'undefined' && document.hidden) {
               return;
             }
             if (lastReportedStateRef.current !== 'pause') {
               lastReportedStateRef.current = 'pause';
-              onPause(currentTime);
+              if (isHost) {
+                onPause(currentTime);
+              }
             }
           }
         },
@@ -339,17 +344,17 @@ export function YouTubePlayer({
       } catch {}
     } else if (remoteState.action === 'sync_tick') {
       // 🔄 CONTINUOUS HEARTBEAT AUTO-ALIGNMENT
-      // Only align if playing smoothly and NOT in buffering state
+      // Only seek if drift is large (> 5.0s) so mobile YouTube NEVER stutters or resets
       if (isPlaying && state === window.YT.PlayerState.PLAYING) {
         const latency = Math.max(0, (Date.now() - (remoteState.timestamp || Date.now())) / 1000);
         const expected = remoteState.currentTime + (latency < 2 ? latency : 0);
         const current = playerRef.current.getCurrentTime?.() ?? 0;
         const drift = Math.abs(current - expected);
 
-        // Smooth buffer: only align if drift exceeds 1.8s and throttle to once every 4 seconds
-        if (drift > 1.8 && Date.now() - lastSyncTickSeekRef.current > 4000) {
+        // Only correct if drift exceeds 5.0 seconds and throttle to once every 8 seconds
+        if (drift > 5.0 && Date.now() - lastSyncTickSeekRef.current > 8000) {
           lastSyncTickSeekRef.current = Date.now();
-          remoteLockUntilRef.current = Date.now() + 800;
+          remoteLockUntilRef.current = Date.now() + 1500;
           try {
             playerRef.current.seekTo(expected, true);
           } catch {}
