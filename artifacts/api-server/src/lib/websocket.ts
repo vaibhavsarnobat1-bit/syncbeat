@@ -247,16 +247,21 @@ export function setupWebSocket(server: Server) {
         updateRoomPlayback(room);
         broadcastAll(roomId, { type: "queue_update", queue: room.queue });
 
-      // ── Queue: skip to next ──
+      // ── Queue: skip to next (or clear if queue empty) ──
       } else if (msgType === "queue_skip") {
-        if (room.queue.length === 0) return;
         if (room.currentTrack) {
           room.history.unshift(room.currentTrack);
           if (room.history.length > 20) room.history.pop();
         }
-        room.currentTrack = room.queue.shift()!;
-        room.isPlaying = true;
-        room.currentTime = 0;
+        if (room.queue.length > 0) {
+          room.currentTrack = room.queue.shift()!;
+          room.isPlaying = true;
+          room.currentTime = 0;
+        } else {
+          room.currentTrack = null;
+          room.isPlaying = false;
+          room.currentTime = 0;
+        }
         room.lastSyncAt = Date.now();
         updateRoomPlayback(room);
 
@@ -268,9 +273,11 @@ export function setupWebSocket(server: Server) {
           history: room.history,
         });
 
-        addSystemMessage(roomId, `⏭️ Skipped to: ${room.currentTrack.title}`).then((sysMsg) => {
-          broadcastAll(roomId, { type: "chat", message: sysMsg });
-        });
+        if (room.currentTrack) {
+          addSystemMessage(roomId, `⏭️ Skipped to: ${room.currentTrack.title}`).then((sysMsg) => {
+            broadcastAll(roomId, { type: "chat", message: sysMsg });
+          });
+        }
 
       // ── Periodic Sync Heartbeat (Continuous Drift Correction) ──
       } else if (msgType === "sync_tick") {

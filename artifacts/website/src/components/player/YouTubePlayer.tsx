@@ -218,6 +218,10 @@ export function YouTubePlayer({
         onError: (event: any) => {
           console.warn('[YouTubePlayer] Error code:', event.data);
           setEmbedError(event.data);
+          // When YouTube restricts a video, stop playing state so room isn't stuck
+          try {
+            onPause(0);
+          } catch {}
         },
         onReady: (e: any) => {
           const iframe = e.target.getIframe();
@@ -279,15 +283,15 @@ export function YouTubePlayer({
             if (typeof document !== 'undefined' && document.hidden) {
               return;
             }
-            // ✅ PAUSE ALWAYS BROADCASTS if host — even if inside lock window!
-            // This ensures mobile tap-to-pause always works for the host.
+            // Allow any member/device to pause the room!
+            if (Date.now() < remoteLockUntilRef.current) {
+              lastReportedStateRef.current = 'pause';
+              return;
+            }
             if (lastReportedStateRef.current !== 'pause') {
               lastReportedStateRef.current = 'pause';
-              if (isHost) {
-                // Clear lock so this pause isn't suppressed
-                remoteLockUntilRef.current = 0;
-                onPause(currentTime);
-              }
+              remoteLockUntilRef.current = 0;
+              onPause(currentTime);
             }
           }
         },
@@ -314,9 +318,12 @@ export function YouTubePlayer({
     if (!playerRef.current || typeof playerRef.current.getPlayerState !== 'function') return;
     try {
       const state = playerRef.current.getPlayerState();
-      if (isPlaying && state !== window.YT.PlayerState.PLAYING && state !== window.YT.PlayerState.BUFFERING) {
-        playerRef.current.playVideo();
-      } else if (!isPlaying && state === window.YT.PlayerState.PLAYING) {
+      if (isPlaying) {
+        if (state !== window.YT.PlayerState.PLAYING && state !== window.YT.PlayerState.BUFFERING) {
+          playerRef.current.playVideo();
+        }
+      } else {
+        // ALWAYS pause player when room is not playing
         playerRef.current.pauseVideo();
       }
     } catch {}
@@ -438,7 +445,7 @@ export function YouTubePlayer({
             Song Restricted by Owner
           </h3>
           <p className="text-slate-400 text-xs mb-4 max-w-xs leading-relaxed">
-            This YouTube track doesn&apos;t permit embedded playback on third-party sites.
+            Yeh song owner ne website par embed karna restrict kiya hai. Dusra song search karein ya skip karein!
           </p>
           <div className="flex flex-wrap items-center justify-center gap-2.5">
             {onSkipNext && (
@@ -447,14 +454,27 @@ export function YouTubePlayer({
                 onClick={onSkipNext}
                 className="px-4 py-2 rounded-xl bg-cyan-500 hover:bg-cyan-400 text-black font-extrabold text-xs transition-all shadow-lg shadow-cyan-500/25 active:scale-95 cursor-pointer"
               >
-                ⏭️ Skip to Next Song
+                ⏭️ Skip / Dismiss
               </button>
             )}
+            <button
+              type="button"
+              onClick={() => {
+                const searchEl = document.querySelector('input[placeholder*="Search"]') as HTMLInputElement;
+                if (searchEl) {
+                  searchEl.scrollIntoView({ behavior: 'smooth', block: 'center' });
+                  searchEl.focus();
+                }
+              }}
+              className="px-4 py-2 rounded-xl bg-white/10 hover:bg-white/20 text-cyan-300 font-bold text-xs transition-all border border-cyan-500/30 active:scale-95 cursor-pointer"
+            >
+              🔍 Search Another Song
+            </button>
             <a
               href={`https://www.youtube.com/watch?v=${videoId}`}
               target="_blank"
               rel="noopener noreferrer"
-              className="px-4 py-2 rounded-xl bg-white/10 hover:bg-white/20 text-white font-bold text-xs transition-all border border-white/15"
+              className="px-4 py-2 rounded-xl bg-white/5 hover:bg-white/10 text-white/70 font-medium text-xs transition-all border border-white/10"
             >
               Open on YouTube
             </a>

@@ -1621,11 +1621,11 @@ export default function RoomPage() {
                       onPause={(time) => send({ type: 'pause', currentTime: time })}
                       onSeek={(time) => send({ type: 'seek', currentTime: time })}
                       onEnded={() => {
-                        if (isHost && queue.length > 0) {
+                        if (isHost) {
                           handleQueueSkip();
                         }
                       }}
-                      onSkipNext={queue.length > 0 ? () => handleQueueSkip() : undefined}
+                      onSkipNext={() => handleQueueSkip()}
                       onReady={() => {}}
                       getTimeRef={playerGetTimeRef}
                       playerControlRef={playerControlRef}
