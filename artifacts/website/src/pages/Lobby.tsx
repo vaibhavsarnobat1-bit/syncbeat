@@ -215,6 +215,37 @@ export default function Lobby() {
   const [copied, setCopied] = useState(false);
   const [showDownloadModal, setShowDownloadModal] = useState(false);
 
+  // 📱 PWA Install Prompt
+  const [installPrompt, setInstallPrompt] = useState<any>(null);
+  const [showInstallBanner, setShowInstallBanner] = useState(false);
+  const [installDone, setInstallDone] = useState(false);
+
+  useEffect(() => {
+    // Check if already installed as PWA
+    const isStandalone = window.matchMedia('(display-mode: standalone)').matches
+      || (window.navigator as any).standalone === true;
+    if (isStandalone) return; // Already installed, don't show banner
+
+    const handler = (e: Event) => {
+      e.preventDefault();
+      setInstallPrompt(e);
+      setShowInstallBanner(true);
+    };
+    window.addEventListener('beforeinstallprompt', handler);
+    return () => window.removeEventListener('beforeinstallprompt', handler);
+  }, []);
+
+  const handleInstall = async () => {
+    if (!installPrompt) return;
+    installPrompt.prompt();
+    const { outcome } = await installPrompt.userChoice;
+    if (outcome === 'accepted') {
+      setInstallDone(true);
+      setShowInstallBanner(false);
+    }
+    setInstallPrompt(null);
+  };
+
   // Discover public rooms state
   const [publicRooms, setPublicRooms] = useState<any[]>([]);
   const [loadingPublic, setLoadingPublic] = useState(false);
@@ -361,6 +392,40 @@ export default function Lobby() {
         className="absolute inset-0 bg-[radial-gradient(ellipse_80%_80%_at_50%_-20%,rgba(0,212,212,0.12),transparent_60%)] pointer-events-none"
         aria-hidden="true"
       />
+
+      {/* 📱 PWA Install Banner — shown only on mobile when app is not installed */}
+      <AnimatePresence>
+        {showInstallBanner && !installDone && (
+          <motion.div
+            initial={{ y: -80, opacity: 0 }}
+            animate={{ y: 0, opacity: 1 }}
+            exit={{ y: -80, opacity: 0 }}
+            className="fixed top-0 left-0 right-0 z-[999] px-3 pt-2 pb-2"
+          >
+            <div className="max-w-lg mx-auto rounded-2xl bg-gradient-to-r from-cyan-950/95 to-blue-950/95 border border-cyan-500/30 backdrop-blur-xl shadow-2xl shadow-cyan-500/20 flex items-center gap-3 px-4 py-3">
+              <div className="text-2xl shrink-0">📲</div>
+              <div className="flex-1 min-w-0">
+                <p className="text-white font-extrabold text-[13px] leading-tight">Install SyncBeat App</p>
+                <p className="text-cyan-300/80 text-[10px] mt-0.5 leading-tight">Music app se seedha song share karo → Room mein aa jayega!</p>
+              </div>
+              <button
+                type="button"
+                onClick={handleInstall}
+                className="shrink-0 px-3 py-1.5 rounded-xl bg-gradient-to-r from-cyan-500 to-blue-500 text-black font-extrabold text-[11px] shadow-lg active:scale-95 transition-all"
+              >
+                Install ✨
+              </button>
+              <button
+                type="button"
+                onClick={() => setShowInstallBanner(false)}
+                className="shrink-0 w-6 h-6 rounded-full bg-white/10 text-white/60 flex items-center justify-center text-xs active:scale-95"
+              >
+                ✕
+              </button>
+            </div>
+          </motion.div>
+        )}
+      </AnimatePresence>
       <div
         className="absolute bottom-[-10%] left-[-10%] w-[500px] h-[500px] rounded-full opacity-[0.05] blur-[100px] pointer-events-none"
         style={{ background: 'radial-gradient(circle, #00d4d4 0%, transparent 70%)' }}
