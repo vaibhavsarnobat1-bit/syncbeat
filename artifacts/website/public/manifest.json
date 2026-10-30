@@ -35,5 +35,19 @@
       "url": "/lobby",
       "description": "Browse and join music rooms"
     }
-  ]
+  ],
+  "share_target": {
+    "action": "/share-audio",
+    "method": "POST",
+    "enctype": "multipart/form-data",
+    "params": {
+      "title": "title",
+      "files": [
+        {
+          "name": "audio",
+          "accept": ["audio/*", "audio/mpeg", "audio/mp3", "audio/mp4", "audio/ogg", "audio/wav", "audio/aac", "audio/flac", ".mp3", ".wav", ".ogg", ".aac", ".flac", ".m4a"]
+        }
+      ]
+    }
+  }
 }

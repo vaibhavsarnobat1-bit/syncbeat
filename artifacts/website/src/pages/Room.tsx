@@ -945,6 +945,36 @@ export default function RoomPage() {
     e.target.value = '';
   };
 
+  // 🎵 Web Share Target: receive audio file shared from Music app via Service Worker
+  useEffect(() => {
+    if (!('serviceWorker' in navigator)) return;
+    const handleSWMessage = async (event: MessageEvent) => {
+      if (event.data?.type !== 'SHARED_AUDIO_FILE') return;
+      const { name, mimeType, buffer } = event.data as { type: string; name: string; mimeType: string; buffer: ArrayBuffer };
+      if (!buffer) return;
+      try {
+        const blob = new Blob([buffer], { type: mimeType || 'audio/mpeg' });
+        const file = new File([blob], name, { type: mimeType || 'audio/mpeg' });
+        const saved = await saveOfflineSongs([file]);
+        const newItems: DeviceFile[] = saved.map((s) => ({
+          id: s.id,
+          name: s.name,
+          url: s.url || '',
+          size: s.size,
+          blob: s.blob,
+          mime: s.type,
+        }));
+        setLocalFiles((prev) => [...prev, ...newItems]);
+        for (const item of newItems) await uploadDeviceSong(item);
+      } catch (err) {
+        console.warn('[ShareTarget] Error processing shared audio:', err);
+      }
+    };
+    navigator.serviceWorker.addEventListener('message', handleSWMessage);
+    return () => navigator.serviceWorker.removeEventListener('message', handleSWMessage);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
   const playLocalFile = (idx: number) => {
     const file = localFiles[idx];
     if (!file) return;
