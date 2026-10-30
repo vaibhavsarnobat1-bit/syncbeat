@@ -2015,12 +2015,12 @@ export default function RoomPage() {
                   onClick={() => localFileInputRef.current?.click()}
                   className="chip-pop flex items-center gap-1 px-2.5 py-1 rounded-lg bg-cyan-500/10 hover:bg-cyan-500/20 text-cyan-400 border border-cyan-400/25 text-[10px] font-bold shrink-0"
                 >
-                  📁 Select Audio Files
+                  🎵 Add Song
                 </button>
                 <input
                   ref={localFileInputRef}
                   type="file"
-                  accept="audio/*"
+                  accept="audio/*,audio/mpeg,audio/mp3,audio/mp4,audio/wav,audio/ogg,audio/aac,audio/flac,audio/x-m4a,.mp3,.wav,.ogg,.aac,.flac,.m4a,.opus"
                   multiple
                   className="hidden"
                   onChange={handleLocalFileSelect}
@@ -2041,7 +2041,8 @@ export default function RoomPage() {
                   <p className="text-xs font-semibold text-center px-4 text-white/80 group-hover:text-cyan-300 transition-colors">
                     Select audio files from your device
                   </p>
-                  <span className="text-[10px] text-cyan-400/70 font-medium">Plays for every member in the room • Click to select</span>
+                  <span className="text-[10px] text-cyan-400/70 font-medium text-center px-4">Plays for every member in the room • Click to select</span>
+                  <span className="text-[9px] text-white/30 text-center px-4 mt-0.5">📱 Mobile: Files app → ☰ Menu → Audio/Music folder</span>
                 </div>
               ) : (
                 <div className="divide-y divide-white/5 max-h-[180px] overflow-y-auto scrollbar-hide">
