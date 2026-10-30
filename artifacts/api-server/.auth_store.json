@@ -1,0 +1,44 @@
+{
+  "users": [
+    {
+      "id": "Mjn7Ba4Sp9RPbjM5",
+      "username": "vaibhav27",
+      "displayName": "Admin",
+      "avatarColor": "#06b6d4",
+      "passHash": "fa9a577062074bed2f4aafa581f5f3352b8724ffc312c0bfb7f30d484f787e5fa3a16898df07ee8e2d897227b14795d1ebf8b9df8b2bf23be5bade442ead98ed",
+      "passSalt": "47cc4d18b1dd53868578b98e4c21a253",
+      "role": "admin",
+      "provider": "local",
+      "email": null,
+      "photoUrl": null,
+      "createdAt": 1792581569790
+    },
+    {
+      "id": "5ulkiv_SvVYEmHdR",
+      "username": "jjjj",
+      "displayName": "jjjj",
+      "avatarColor": "#7c3aed",
+      "passHash": "dbd40979a96dc8eafff8b6119307a66838e3a221699bc22c3124492558cd426b8b94acddb800ea08054992dbb5274b1260375c8229ab5e6e52b5c00c41c8dd94",
+      "passSalt": "0ec0269dbbeff190ffa8cc6c1fae3777",
+      "role": "user",
+      "provider": "local",
+      "email": null,
+      "photoUrl": null,
+      "createdAt": 1793186593422
+    },
+    {
+      "id": "Yi5xq7DCxeRCJjlM",
+      "username": "jjjj72",
+      "displayName": "jjjj72",
+      "avatarColor": "#d97706",
+      "passHash": "8ed654d79df30d0985fe9b69609b59e91ecfb8a2000ec798618ecc31b02ee0ac6272ff83bfcd9e39817dc466b8a88d606d8985223b257885b41262dc4e1a59fc",
+      "passSalt": "cc6d0fa760b5c77060a0632127665fb2",
+      "role": "user",
+      "provider": "local",
+      "email": null,
+      "photoUrl": null,
+      "createdAt": 1793187034895
+    }
+  ],
+  "sessions": []
+}

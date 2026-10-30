@@ -29,6 +29,7 @@ interface YouTubePlayerProps {
   playerControlRef?: React.MutableRefObject<PlayerControls | null>;
   trackTitle?: string;
   trackThumbnail?: string;
+  onAutoplayBlocked?: () => void;
 }
 
 export function YouTubePlayer({
@@ -45,6 +46,7 @@ export function YouTubePlayer({
   playerControlRef,
   trackTitle,
   trackThumbnail,
+  onAutoplayBlocked,
 }: YouTubePlayerProps) {
   const playerRef = useRef<any>(null);
   const wrapperRef = useRef<HTMLDivElement>(null);
@@ -56,6 +58,8 @@ export function YouTubePlayer({
   const currentVideoIdRef = useRef<string>(videoId);
   const [embedError, setEmbedError] = useState<number | null>(null);
   const [isFullscreen, setIsFullscreen] = useState(false);
+  // Mobile autoplay block detection
+  const [ytBlocked, setYtBlocked] = useState(false);
 
   const toggleFullscreen = () => {
     const el = containerRef.current;
@@ -170,6 +174,7 @@ export function YouTubePlayer({
         lastReportedStateRef.current = isPlaying ? 'play' : 'pause';
         // Reset any previous embed error for the new video
         setEmbedError(null);
+        setYtBlocked(false);
         if (isPlaying) {
           playerRef.current.loadVideoById({
             videoId,
@@ -224,11 +229,25 @@ export function YouTubePlayer({
             iframe.setAttribute('allow', 'accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share');
             iframe.setAttribute('allowfullscreen', 'true');
           }
-          try {
-            if (isPlaying) {
+          if (isPlaying) {
+            try {
               e.target.playVideo();
+              // Poll after 2.5s: if still unstarted/cued, autoplay was blocked by browser
+              setTimeout(() => {
+                try {
+                  const st = e.target.getPlayerState?.();
+                  // -1=unstarted, 5=video cued — means mobile blocked autoplay
+                  if (st === -1 || st === 5) {
+                    setYtBlocked(true);
+                    onAutoplayBlocked?.();
+                  }
+                } catch {}
+              }, 2500);
+            } catch {
+              setYtBlocked(true);
+              onAutoplayBlocked?.();
             }
-          } catch {}
+          }
           onReady();
         },
         onStateChange: (event: any) => {
@@ -246,6 +265,8 @@ export function YouTubePlayer({
           const currentTime = playerRef.current?.getCurrentTime?.() ?? 0;
 
           if (event.data === window.YT.PlayerState.PLAYING) {
+            // Clear mobile autoplay block — song is now actually playing!
+            setYtBlocked(false);
             if (lastReportedStateRef.current !== 'play') {
               lastReportedStateRef.current = 'play';
               // Only host or explicit user actions should broadcast play to the room
@@ -371,6 +392,38 @@ export function YouTubePlayer({
         className="absolute inset-0 bg-black"
         style={{ width: '100%', height: '100%' }}
       />
+
+      {/* 📱 Mobile Autoplay Blocked Overlay: shown when browser blocks autoplay */}
+      {ytBlocked && !embedError && (
+        <div className="absolute inset-0 z-40 bg-black/80 backdrop-blur-sm flex flex-col items-center justify-center text-center p-4">
+          <div className="text-5xl mb-4 animate-bounce">🔊</div>
+          <h3 className="text-white font-extrabold text-base mb-2">Tap to Start Music</h3>
+          <p className="text-slate-400 text-xs mb-5 max-w-[220px] leading-relaxed">
+            Your browser needs a tap to play audio. Everyone is already listening!
+          </p>
+          <button
+            type="button"
+            className="px-6 py-3 rounded-full bg-gradient-to-r from-cyan-500 to-blue-600 text-black font-extrabold text-sm shadow-lg shadow-cyan-500/40 active:scale-95 animate-pulse cursor-pointer"
+            onClick={() => {
+              setYtBlocked(false);
+              remoteLockUntilRef.current = Date.now() + 1500;
+              lastReportedStateRef.current = 'play';
+              try {
+                const cur = playerRef.current?.getCurrentTime?.() ?? 0;
+                const syncTarget = remoteState?.currentTime
+                  ? remoteState.currentTime + Math.max(0, (Date.now() - (remoteState.timestamp || Date.now())) / 1000)
+                  : cur;
+                if (Math.abs(cur - syncTarget) > 1) {
+                  playerRef.current?.seekTo?.(syncTarget, true);
+                }
+                playerRef.current?.playVideo?.();
+              } catch {}
+            }}
+          >
+            ▶ Play &amp; Sync Now
+          </button>
+        </div>
+      )}
 
       {/* ⚠️ Embed Error Overlay: shown when video can't be embedded */}
       {embedError !== null && (
