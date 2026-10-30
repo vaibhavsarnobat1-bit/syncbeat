@@ -127,8 +127,8 @@ export default function Login() {
   };
 
   return (
-    <div className="relative w-full min-h-screen flex items-center justify-center p-4 overflow-hidden bg-[#060708] text-white select-none">
-      <div className="fixed inset-0 z-0" style={{ width: '100vw', height: '100vh' }}>
+    <div className="relative w-full min-h-screen flex items-center justify-center p-4 overflow-hidden bg-background text-foreground select-none">
+      <div className="fixed inset-0 z-0" style={{ width: '100%', height: '100vh' }}>
         <ElementsCollection
           variant="water" speed={1.00} size={1.00} particleAmount={1.00}
           hue={0} saturation={1.00} brightness={1.00} opacity={1.00}
@@ -142,39 +142,39 @@ export default function Login() {
           <button
             onClick={() => setLocation('/')}
             id="back-home-nav-btn"
-            className="flex items-center gap-2 px-3.5 py-2 rounded-xl bg-black/60 hover:bg-cyan-500/20 border border-white/10 hover:border-cyan-400/40 text-white/80 hover:text-cyan-300 transition-all backdrop-blur-xl shadow-lg group cursor-pointer active:scale-95"
+            className="flex items-center gap-2 px-3.5 py-2 rounded-xl surface-header text-muted-foreground hover:text-primary transition-[color,background-color,border-color,box-shadow,transform] backdrop-blur-xl group cursor-pointer active:scale-95"
           >
-            <ArrowLeft className="w-4 h-4 text-cyan-400 group-hover:-translate-x-1 transition-transform" />
-            <HomeIcon className="w-3.5 h-3.5 text-cyan-400/80" />
+            <ArrowLeft className="w-4 h-4 text-muted-foreground group-hover:-translate-x-1 transition-transform" />
+            <HomeIcon className="w-3.5 h-3.5 text-muted-foreground" />
             <span className="text-xs font-bold tracking-wide">Back to Home</span>
           </button>
         </div>
         <div className="pointer-events-auto flex items-center gap-2.5">
-          <div className="hidden sm:flex items-center gap-2 px-3 py-1.5 rounded-full bg-[#060708]/70 border border-cyan-500/20 backdrop-blur-xl shadow-lg">
+          <div className="hidden sm:flex items-center gap-2 px-3 py-1.5 rounded-full surface-header backdrop-blur-xl">
             <BrandMark size={18} title="SyncBeat logo" />
-            <span className="text-xs font-semibold tracking-wide text-cyan-200">SyncBeat</span>
+            <span className="text-xs font-semibold tracking-wide text-foreground">SyncBeat</span>
           </div>
         </div>
       </header>
 
       <div className="max-w-sm w-full relative z-10 my-6">
         <div className="text-center mb-4">
-          <div className="relative mx-auto mb-2.5 w-12 h-12 rounded-xl bg-[#070d1c]/85 ring-1 ring-cyan-400/25 shadow-lg shadow-cyan-500/30 flex items-center justify-center">
+          <div className="relative mx-auto mb-2.5 w-12 h-12 rounded-xl bg-[#070d1c]/85 ring-1 ring-cyan-400/25 shadow-sm flex items-center justify-center">
             <BrandMark variant="intro" size={42} title="SyncBeat logo" />
           </div>
           <h1 className="text-2xl font-extrabold tracking-tight">
-            <span className="bg-gradient-to-r from-white via-cyan-100 to-cyan-300 bg-clip-text text-transparent">
+            <span className="text-foreground">
               {mode === 'signup' ? 'Create your account' : 'Welcome back'}
             </span>
           </h1>
-          <p className="text-cyan-100/60 text-xs font-medium mt-1">
+          <p className="text-muted-foreground text-xs font-medium mt-1">
             {inviteCode ? 'Sign in to join the synchronized room 🎧' : 'Synchronized Music with Friends'}
           </p>
         </div>
 
-        <div className="relative rounded-2xl p-5 overflow-hidden bg-[#070e1b]/88 backdrop-blur-2xl border border-cyan-500/25 shadow-2xl shadow-black/80">
+        <div className="relative rounded-2xl p-5 overflow-hidden surface-card backdrop-blur-2xl">
           <div className="absolute top-0 left-[10%] right-[10%] h-[1px]"
-            style={{ background: 'linear-gradient(90deg, transparent, rgba(0,212,212,0.8), rgba(56,189,248,0.8), transparent)' }} />
+            style={{ background: 'linear-gradient(90deg, transparent, hsl(var(--border)), hsl(var(--border)), transparent)' }} />
 
           {inviteCode && (
             <div className="flex items-center gap-3 rounded-2xl p-3.5 bg-cyan-950/60 border border-cyan-400/30 backdrop-blur-md mb-4">
@@ -183,7 +183,7 @@ export default function Login() {
               </div>
               <div>
                 <p className="text-sm font-bold text-cyan-100">Invite detected 🎧</p>
-                <p className="text-xs text-cyan-300/60 mt-0.5">Sign in and you&apos;ll join room <span className="font-mono text-cyan-200">{inviteCode}</span> automatically.</p>
+                <p className="text-xs text-muted-foreground mt-0.5">Sign in and you&apos;ll join room <span className="font-mono text-cyan-200">{inviteCode}</span> automatically.</p>
               </div>
             </div>
           )}
@@ -192,10 +192,10 @@ export default function Login() {
             <button
               onClick={() => { setMode('signup'); setError(''); }}
               id="tab-signup"
-              className={`flex items-center justify-center gap-1.5 py-2 rounded-lg text-xs font-bold transition-all cursor-pointer ${
+              className={`flex items-center justify-center gap-1.5 py-2 rounded-lg text-xs font-bold transition-[color,background-color,border-color,box-shadow,transform] cursor-pointer ${
                 mode === 'signup'
-                  ? 'bg-gradient-to-r from-cyan-500/90 to-sky-500/90 text-[#04121a] shadow-lg shadow-cyan-500/25'
-                  : 'text-white/55 hover:text-white'
+                  ? 'bg-primary/15 text-primary shadow-[inset_0_0_0_1px_hsl(var(--primary)/0.2)]'
+                  : 'text-muted-foreground hover:text-foreground'
               }`}
             >
               <UserPlus className="w-3.5 h-3.5" /> Create account
@@ -203,10 +203,10 @@ export default function Login() {
             <button
               onClick={() => { setMode('signin'); setError(''); }}
               id="tab-signin"
-              className={`flex items-center justify-center gap-1.5 py-2 rounded-lg text-xs font-bold transition-all cursor-pointer ${
+              className={`flex items-center justify-center gap-1.5 py-2 rounded-lg text-xs font-bold transition-[color,background-color,border-color,box-shadow,transform] cursor-pointer ${
                 mode === 'signin'
-                  ? 'bg-gradient-to-r from-cyan-500/90 to-sky-500/90 text-[#04121a] shadow-lg shadow-cyan-500/25'
-                  : 'text-white/55 hover:text-white'
+                  ? 'bg-primary/15 text-primary shadow-[inset_0_0_0_1px_hsl(var(--primary)/0.2)]'
+                  : 'text-muted-foreground hover:text-foreground'
               }`}
             >
               <LogIn className="w-3.5 h-3.5" /> Sign in
@@ -215,7 +215,7 @@ export default function Login() {
 
           <form onSubmit={submit} className="space-y-3.5">
             <label className="block">
-              <span className="text-[11px] font-bold uppercase tracking-wider text-cyan-200/60">Username</span>
+              <span className="text-[11px] font-bold form-label">Username</span>
               <input
                 ref={inputRef}
                 value={username}
@@ -224,14 +224,14 @@ export default function Login() {
                 spellCheck={false}
                 id="field-username"
                 placeholder="e.g. user"
-                className="mt-1.5 w-full px-3.5 py-3 rounded-xl bg-black/50 border border-white/10 text-sm text-white placeholder:text-white/25 outline-none focus:border-cyan-400/60 focus:bg-black/70 focus:ring-2 focus:ring-cyan-500/20 transition-all"
+                className="mt-1.5 w-full px-3.5 py-3 rounded-xl field-surface text-sm transition-[color,background-color,border-color,box-shadow,transform]"
               />
               {mode === 'signup' && nameCheck.state !== 'idle' && (
                 <p
                   id="username-hint"
                   className={`mt-1.5 text-[11px] font-semibold ${
                     nameCheck.state === 'checking'
-                      ? 'text-white/40'
+                      ? 'text-muted-foreground'
                       : nameCheck.state === 'free'
                         ? 'text-emerald-300'
                         : nameCheck.state === 'offline'
@@ -244,13 +244,13 @@ export default function Login() {
               )}
               {mode === 'signup' && nameCheck.state === 'taken' && !!nameCheck.suggestions?.length && (
                 <div id="username-suggestions" className="mt-2 flex flex-wrap items-center gap-1.5">
-                  <span className="text-[10px] font-bold uppercase tracking-wider text-white/35">Free to use</span>
+                  <span className="text-[10px] font-bold text-kicker">Free to use</span>
                   {nameCheck.suggestions.map((s) => (
                     <button
                       key={s}
                       type="button"
                       onClick={() => setUsername(s)}
-                      className="px-2.5 py-1 rounded-lg bg-cyan-500/12 border border-cyan-400/30 text-[11px] font-semibold text-cyan-200 hover:bg-cyan-500/25 hover:border-cyan-300/60 transition-all cursor-pointer"
+                      className="px-2.5 py-1 rounded-lg bg-cyan-500/12 border border-cyan-400/30 text-[11px] font-semibold text-cyan-200 hover:bg-cyan-500/25 hover:border-cyan-300/60 transition-[color,background-color,border-color,box-shadow,transform] cursor-pointer"
                     >
                       {s}
                     </button>
@@ -260,7 +260,7 @@ export default function Login() {
             </label>
 
             <label className="block">
-              <span className="text-[11px] font-bold uppercase tracking-wider text-cyan-200/60">Password</span>
+              <span className="text-[11px] font-bold form-label">Password</span>
               <div className="relative mt-1.5">
                 <input
                   value={password}
@@ -269,14 +269,14 @@ export default function Login() {
                   autoComplete={mode === 'signup' ? 'new-password' : 'current-password'}
                   id="field-password"
                   placeholder="At least 6 characters"
-                  className="w-full px-3.5 py-3 pr-12 rounded-xl bg-black/50 border border-white/10 text-sm text-white placeholder:text-white/25 outline-none focus:border-cyan-400/60 focus:bg-black/70 focus:ring-2 focus:ring-cyan-500/20 transition-all"
+                  className="w-full px-3.5 py-3 pr-12 rounded-xl field-surface text-sm transition-[color,background-color,border-color,box-shadow,transform]"
                 />
                 <button
                   type="button"
                   onClick={() => setShowPassword((v) => !v)}
                   id="toggle-password"
                   aria-label={showPassword ? 'Hide password' : 'Show password'}
-                  className="absolute right-2 top-1/2 -translate-y-1/2 p-2 rounded-lg text-white/40 hover:text-cyan-300 hover:bg-cyan-500/10 transition-colors cursor-pointer"
+                  className="absolute right-2 top-1/2 -translate-y-1/2 p-2 rounded-lg text-muted-foreground hover:text-cyan-300 hover:bg-cyan-500/10 transition-colors cursor-pointer"
                 >
                   {showPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
                 </button>
@@ -293,7 +293,7 @@ export default function Login() {
               type="submit"
               id="btn-submit-auth"
               disabled={busy}
-              className="relative w-full py-3 rounded-xl font-bold text-sm text-[#04121a] overflow-hidden bg-gradient-to-r from-cyan-400 via-cyan-300 to-sky-400 shadow-lg shadow-cyan-500/30 hover:shadow-cyan-400/40 active:scale-[0.99] transition-all disabled:opacity-60 cursor-pointer group"
+              className="relative w-full py-3 rounded-xl font-bold text-sm overflow-hidden action-primary active:scale-[0.99] transition-[color,background-color,border-color,box-shadow,transform] disabled:opacity-60 cursor-pointer group"
             >
               <span className="flex items-center justify-center gap-2">
                 {busy
@@ -304,19 +304,19 @@ export default function Login() {
             </button>
           </form>
 
-          <p className="mt-3.5 text-[11px] text-center text-white/40 leading-relaxed">
+          <p className="mt-3.5 text-[11px] text-center text-muted-foreground leading-relaxed">
             {mode === 'signup'
               ? 'Your username and password stay on SyncBeat. Come back any time and sign in with the same details.'
               : 'Use the same username and password you created.'}
           </p>
 
-          <div className="mt-3 flex items-center justify-center gap-1.5 text-[10px] font-semibold text-cyan-200/45 text-center">
+          <div className="mt-3 flex items-center justify-center gap-1.5 text-[10px] font-semibold text-muted-foreground text-center">
             <ShieldCheck className="w-3 h-3 shrink-0" />
             <span>Google sign-in coming soon · Already have an account? Use the Sign in tab.</span>
           </div>
         </div>
 
-        <div className="flex items-center justify-center gap-2 text-xs text-cyan-200/30 mt-5 text-center">
+        <div className="flex items-center justify-center gap-2 text-xs text-muted-foreground mt-5 text-center">
           <span>Ultra low-latency audio sync · Spatial audio ready</span>
         </div>
       </div>

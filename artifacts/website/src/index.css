@@ -36,29 +36,36 @@
 }
 
 :root {
-  --background: 210 50% 4%;
-  --foreground: 0 0% 98%;
-  --border: 200 30% 16%;
-  --card: 210 45% 6%;
-  --card-foreground: 0 0% 98%;
-  --card-border: 200 30% 16%;
-  --popover: 210 45% 6%;
-  --popover-foreground: 0 0% 98%;
-  --popover-border: 200 30% 16%;
-  --primary: 186 100% 42%;
-  --primary-foreground: 210 50% 4%;
-  --secondary: 210 30% 15%;
-  --secondary-foreground: 0 0% 98%;
-  --muted: 210 20% 15%;
-  --muted-foreground: 200 10% 65%;
-  --accent: 217 91% 60%;
-  --accent-foreground: 0 0% 100%;
-  --destructive: 0 84% 60%;
+  /* Hallmark-informed polish: quieter surfaces, a single cyan accent, existing layout. */
+  --background: 205 24% 5%;
+  --foreground: 180 12% 94%;
+  --border: 200 15% 22%;
+  --card: 205 21% 9%;
+  --card-foreground: 180 12% 94%;
+  --card-border: 200 15% 22%;
+  --popover: 205 21% 10%;
+  --popover-foreground: 180 12% 94%;
+  --popover-border: 200 15% 25%;
+  --primary: 180 62% 62%;
+  --primary-foreground: 205 32% 8%;
+  --secondary: 205 17% 15%;
+  --secondary-foreground: 180 12% 94%;
+  --muted: 205 17% 15%;
+  --muted-foreground: 200 12% 69%;
+  --accent: 189 45% 67%;
+  --accent-foreground: 205 32% 8%;
+  --destructive: 0 72% 62%;
   --destructive-foreground: 0 0% 98%;
-  --input: 210 30% 16%;
-  --ring: 186 100% 42%;
-  --app-font-sans: 'Plus Jakarta Sans', sans-serif;
-  --app-font-display: 'Outfit', sans-serif;
+  --input: 200 15% 29%;
+  --ring: 180 62% 62%;
+  --surface-field: 205 23% 7%;
+  --surface-hover: 205 17% 13%;
+  --primary-hover: 180 64% 71%;
+  --shadow-color: 210 35% 2%;
+  --surface-shadow: 0 12px 36px hsl(var(--shadow-color) / 0.28);
+  --button-outline: hsl(var(--border));
+  --app-font-sans: 'Plus Jakarta Sans', system-ui, sans-serif;
+  --app-font-display: 'Outfit', system-ui, sans-serif;
   --radius: 0.75rem;
   color-scheme: dark;
 }
@@ -68,9 +75,14 @@
     @apply border-border;
   }
 
+  html,
+  body {
+    overflow-x: clip;
+  }
+
   body {
     @apply font-sans antialiased text-foreground selection:bg-primary/30;
-    background-color: #030c12;
+    background-color: hsl(var(--background));
   }
 
   h1,
@@ -80,30 +92,39 @@
   h5,
   h6 {
     font-family: var(--app-font-display);
+    overflow-wrap: break-word;
+    min-width: 0;
     @apply font-bold tracking-tight text-foreground;
   }
 }
 
+/* Keep keyboard focus immediate, even on controls with local transition utilities. */
+:where(a, button, input, textarea, select, summary, [role='button'], [tabindex]):focus-visible {
+  outline: 2px solid hsl(var(--ring));
+  outline-offset: 3px;
+  transition-property: color, background-color, border-color, box-shadow, opacity, transform;
+}
+
 @layer utilities {
 
-  /* ─── Glass effects ─── */
+  /* Shared surfaces keep the music, not the chrome, in the foreground. */
   .glass-panel {
-    background: rgba(10, 7, 24, 0.55);
-    backdrop-filter: blur(24px) saturate(160%);
-    -webkit-backdrop-filter: blur(24px) saturate(160%);
-    border: 1px solid rgba(255, 255, 255, 0.08);
-    box-shadow: 0 24px 80px rgba(0, 0, 0, 0.6), inset 0 1px 0 rgba(255, 255, 255, 0.06);
+    background: hsl(var(--card) / 0.94);
+    backdrop-filter: blur(20px);
+    -webkit-backdrop-filter: blur(20px);
+    border: 1px solid hsl(var(--border));
+    box-shadow: var(--surface-shadow);
   }
 
   .glass-input {
-    @apply bg-white/5 border border-white/10 focus:border-primary/50 focus:ring-2 focus:ring-primary/20 backdrop-blur-sm transition-all;
+    @apply bg-background border border-input focus:border-primary focus:ring-2 focus:ring-primary/20 transition-colors;
   }
 
   .glass-card {
-    background: linear-gradient(135deg, rgba(255, 255, 255, 0.05) 0%, rgba(255, 255, 255, 0.01) 100%);
-    backdrop-filter: blur(20px);
-    border: 1px solid rgba(255, 255, 255, 0.07);
-    box-shadow: 0 8px 32px rgba(0, 0, 0, 0.4);
+    background: hsl(var(--card) / 0.9);
+    backdrop-filter: blur(16px);
+    border: 1px solid hsl(var(--border));
+    box-shadow: var(--surface-shadow);
   }
 
   .scrollbar-hide::-webkit-scrollbar {
@@ -121,7 +142,7 @@
 ───────────────────────────────────────── */
 .app-bg {
   position: relative;
-  background-color: #030c12;
+  background-color: hsl(var(--background));
 }
 
 /* Starfield dots via SVG background */
@@ -163,7 +184,7 @@
 .page-bg-login {
   min-height: 100vh;
   position: relative;
-  background-color: #030c12;
+  background-color: hsl(var(--background));
 }
 
 .page-bg-login .bg-image {
@@ -192,7 +213,7 @@
 .page-bg-lobby {
   min-height: 100vh;
   position: relative;
-  background-color: #030c12;
+  background-color: hsl(var(--background));
 }
 
 .page-bg-lobby .bg-image {
@@ -221,7 +242,7 @@
 .page-bg-room {
   height: 100vh;
   position: relative;
-  background-color: #030c12;
+  background-color: hsl(var(--background));
 }
 
 .page-bg-room .bg-image {
@@ -413,24 +434,20 @@
   }
 }
 
-/* ─── Gradient shimmer text ─── */
+/* Retain existing heading hooks without animated gradient lettering. */
 .text-shimmer {
-  background: linear-gradient(90deg, #fff 0%, #67e8f9 25%, #38bdf8 50%, #67e8f9 75%, #fff 100%);
-  background-size: 200% auto;
-  -webkit-background-clip: text;
-  -webkit-text-fill-color: transparent;
-  background-clip: text;
-  animation: shimmer 4s linear infinite;
+  color: hsl(var(--foreground));
+  -webkit-text-fill-color: currentColor;
 }
 
-/* ─── Neon border glow on hover ─── */
 .neon-hover {
-  transition: box-shadow 0.3s ease, border-color 0.3s ease;
+  transition: box-shadow 0.2s ease, border-color 0.2s ease;
 }
 
-.neon-hover:hover {
-  border-color: rgba(0, 212, 212, 0.5) !important;
-  box-shadow: 0 0 20px rgba(0, 212, 212, 0.2), 0 0 40px rgba(0, 212, 212, 0.08), inset 0 0 20px rgba(0, 212, 212, 0.03);
+.neon-hover:hover,
+.neon-hover:focus-within {
+  border-color: hsl(var(--primary) / 0.5);
+  box-shadow: var(--surface-shadow);
 }
 
 /* ─── YouTube iframe fix ─── */
@@ -523,17 +540,18 @@
 
 /* Frosted toolbar (headers) */
 .glass-toolbar {
-  background: rgba(7, 11, 24, 0.72);
-  backdrop-filter: blur(28px) saturate(180%);
-  -webkit-backdrop-filter: blur(28px) saturate(180%);
-  border: 1px solid rgba(255, 255, 255, 0.07);
-  box-shadow: 0 12px 40px rgba(0, 0, 0, 0.45), inset 0 1px 0 rgba(255, 255, 255, 0.05);
+  background: hsl(var(--card) / 0.94);
+  backdrop-filter: blur(20px);
+  -webkit-backdrop-filter: blur(20px);
+  border: 1px solid hsl(var(--border));
+  box-shadow: 0 4px 18px hsl(var(--shadow-color) / 0.18);
 }
 
-/* Gradient hairline border card (pair with a rounded-* utility) */
+/* Preserve panel geometry while replacing neon outlines with quiet hairlines. */
 .card-gradient-border {
   position: relative;
-  background: linear-gradient(160deg, rgba(13, 20, 38, 0.9) 0%, rgba(7, 11, 24, 0.94) 100%);
+  background: hsl(var(--card) / 0.96);
+  box-shadow: var(--surface-shadow);
 }
 
 .card-gradient-border::before {
@@ -541,64 +559,44 @@
   position: absolute;
   inset: 0;
   border-radius: inherit;
-  padding: 1px;
-  background: linear-gradient(140deg,
-    rgba(0, 212, 212, 0.45) 0%,
-    rgba(56, 189, 248, 0.12) 35%,
-    rgba(255, 255, 255, 0.04) 60%,
-    rgba(59, 130, 246, 0.35) 100%);
-  -webkit-mask: linear-gradient(#fff 0 0) content-box, linear-gradient(#fff 0 0);
-  -webkit-mask-composite: xor;
-  mask: linear-gradient(#fff 0 0) content-box, linear-gradient(#fff 0 0);
-  mask-composite: exclude;
+  border: 1px solid hsl(var(--border));
   pointer-events: none;
 }
 
-/* CTA shine sweep */
+/* Retained hook: primary actions no longer run a distracting shine loop. */
 .btn-shine {
   position: relative;
   overflow: hidden;
 }
 
-.btn-shine::after {
-  content: '';
-  position: absolute;
-  top: 0;
-  left: -80%;
-  width: 55%;
-  height: 100%;
-  background: linear-gradient(105deg, transparent 0%, rgba(255, 255, 255, 0.35) 50%, transparent 100%);
-  transform: skewX(-18deg);
-  animation: shine-sweep 3.2s ease-in-out infinite;
-  pointer-events: none;
-}
-
-@keyframes shine-sweep {
-  0%, 55% { left: -80%; }
-  100% { left: 160%; }
-}
-
-/* Bouncy chip / small button */
+/* Small controls stay steady under the pointer. */
 .chip-pop {
-  transition: transform 0.28s cubic-bezier(0.34, 1.56, 0.64, 1),
-    background-color 0.2s ease, color 0.2s ease, border-color 0.2s ease, box-shadow 0.25s ease;
+  transition: background-color 0.18s ease, color 0.18s ease,
+    border-color 0.18s ease, box-shadow 0.18s ease;
 }
 
-.chip-pop:hover {
-  transform: translateY(-2px) scale(1.045);
+.chip-pop:hover:not(:disabled) {
+  border-color: hsl(var(--primary) / 0.45);
 }
 
-.chip-pop:active {
-  transform: translateY(0) scale(0.96);
+.chip-pop:active:not(:disabled) {
+  box-shadow: inset 0 0 0 1px hsl(var(--foreground) / 0.12);
 }
 
-/* List row hover slide */
+/* Rows use a surface change rather than moving their hit targets. */
 .row-slide {
-  transition: background-color 0.18s ease, transform 0.22s cubic-bezier(0.22, 1, 0.36, 1), box-shadow 0.22s ease;
+  transition: background-color 0.18s ease, border-color 0.18s ease;
 }
 
-.row-slide:hover {
-  transform: translateX(4px);
+.row-slide:hover,
+.row-slide:focus-within {
+  background-color: hsl(var(--surface-hover));
+  border-color: hsl(var(--border));
+}
+
+/* Hover-only row actions must also appear for keyboard users. */
+.group:focus-within .group-hover\:opacity-100 {
+  opacity: 1;
 }
 
 /* Icon orb container */
@@ -625,16 +623,18 @@
   animation: disc-orbit 11s ease-in-out infinite;
 }
 
-/* Soft inset glow for inputs */
+/* Fields retain validity-dependent borders from their existing markup. */
 .input-glow {
-  background: rgba(14, 21, 38, 0.8);
-  box-shadow: inset 0 2px 10px rgba(0, 0, 0, 0.45), inset 0 0 0 1px rgba(255, 255, 255, 0.03);
+  background: hsl(var(--surface-field));
+  box-shadow: inset 0 1px 2px hsl(var(--shadow-color) / 0.2);
+}
+
+.input-glow::placeholder {
+  color: hsl(var(--muted-foreground));
 }
 
 .input-glow:focus {
-  box-shadow: inset 0 2px 10px rgba(0, 0, 0, 0.45),
-    0 0 0 1px rgba(0, 212, 212, 0.55),
-    0 0 32px rgba(0, 212, 212, 0.18);
+  box-shadow: 0 0 0 3px hsl(var(--primary) / 0.14);
 }
 
 /* ─────────────────────────────────────────
@@ -662,16 +662,10 @@
   transform-style: preserve-3d;
 }
 
-/* Holographic HUD scan line (join card) */
-@keyframes hud-scan {
-  0% { top: 8%; opacity: 0; }
-  12% { opacity: 1; }
-  86% { opacity: 1; }
-  100% { top: 88%; opacity: 0; }
-}
-
+/* Quiet, stationary accent in the join card. */
 .animate-hud-scan {
-  animation: hud-scan 3.6s ease-in-out infinite;
+  top: 8%;
+  opacity: 0.15;
 }
 
 /* Slow ambient spin for glow halos */
@@ -694,21 +688,18 @@
   animation: ticker-scroll 26s linear infinite;
 }
 
-/* 3D press-down CTA */
+/* Existing CTA hook shares the calmer press treatment. */
 .btn-3d {
-  transition: transform 0.14s ease, box-shadow 0.2s ease, filter 0.2s ease;
-  box-shadow: 0 10px 26px rgba(0, 212, 212, 0.28), 0 3px 0 rgba(0, 0, 0, 0.35), inset 0 1px 0 rgba(255, 255, 255, 0.25);
+  transition: background-color 0.18s ease, box-shadow 0.18s ease;
+  box-shadow: 0 3px 10px hsl(var(--shadow-color) / 0.25);
 }
 
 .btn-3d:hover:not(:disabled) {
-  transform: translateY(-2px);
-  filter: brightness(1.08);
-  box-shadow: 0 16px 34px rgba(0, 212, 212, 0.4), 0 5px 0 rgba(0, 0, 0, 0.35), inset 0 1px 0 rgba(255, 255, 255, 0.25);
+  box-shadow: 0 5px 16px hsl(var(--shadow-color) / 0.3);
 }
 
 .btn-3d:active:not(:disabled) {
-  transform: translateY(1px);
-  box-shadow: 0 6px 16px rgba(0, 212, 212, 0.3), 0 1px 0 rgba(0, 0, 0, 0.35), inset 0 1px 0 rgba(255, 255, 255, 0.2);
+  box-shadow: 0 1px 4px hsl(var(--shadow-color) / 0.2);
 }
 
 /* ── SPLIT-FLAP BOARD ── */
@@ -1035,4 +1026,86 @@
 @media (prefers-reduced-motion: reduce) {
   .splash-disc, .splash-halo, .splash-word::after { animation: none; }
   .splash-word h1 { animation: none; opacity: 1; letter-spacing: -0.02em; }
+}
+
+/* Shared polish vocabulary; no changes to page grids or control dimensions. */
+.surface-card {
+  background: hsl(var(--card) / 0.96);
+  border: 1px solid hsl(var(--border));
+  box-shadow: var(--surface-shadow);
+}
+
+.surface-header {
+  background: hsl(var(--background) / 0.94);
+  border-color: hsl(var(--border));
+  backdrop-filter: blur(20px);
+  -webkit-backdrop-filter: blur(20px);
+}
+
+.action-primary {
+  background: hsl(var(--primary));
+  color: hsl(var(--primary-foreground));
+  font-weight: 700;
+  box-shadow: 0 3px 12px hsl(var(--shadow-color) / 0.2);
+  transition: color 0.18s ease, background-color 0.18s ease, box-shadow 0.18s ease,
+    transform 0.18s ease, scale 0.18s ease;
+}
+
+.action-primary:hover:not(:disabled) {
+  background: hsl(var(--primary-hover));
+  box-shadow: 0 4px 16px hsl(var(--shadow-color) / 0.28);
+}
+
+.action-primary:active:not(:disabled) {
+  box-shadow: none;
+}
+
+.field-surface {
+  background: hsl(var(--surface-field));
+  border: 1px solid hsl(var(--input));
+  color: hsl(var(--foreground));
+  box-shadow: inset 0 1px 2px hsl(var(--shadow-color) / 0.16);
+  transition: background-color 0.18s ease, border-color 0.18s ease, box-shadow 0.18s ease;
+}
+
+.field-surface::placeholder {
+  color: hsl(var(--muted-foreground));
+  opacity: 1;
+}
+
+.field-surface:focus {
+  border-color: hsl(var(--primary));
+  box-shadow: 0 0 0 3px hsl(var(--primary) / 0.12);
+}
+
+.form-label,
+.text-kicker {
+  font-family: var(--app-font-sans);
+  font-size: 0.75rem;
+  font-weight: 500;
+  letter-spacing: normal;
+  text-transform: none;
+  color: hsl(var(--muted-foreground));
+}
+
+.form-label {
+  color: hsl(var(--foreground) / 0.86);
+}
+
+/* Existing mouse handlers stay intact; their decorative tilt is visually neutralized. */
+.polish-panel {
+  transform: none !important;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-delay: 0ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    transition-delay: 0ms !important;
+    scroll-behavior: auto !important;
+  }
 }

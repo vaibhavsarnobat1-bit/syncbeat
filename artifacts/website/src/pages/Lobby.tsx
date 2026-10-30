@@ -92,7 +92,7 @@ function PanelStage({ children }: { children: ReactNode }) {
         animate={{ rotateX: tilt.rx, rotateY: tilt.ry }}
         transition={{ type: 'spring', stiffness: 140, damping: 18 }}
         style={{ transformStyle: 'preserve-3d' }}
-        className="relative"
+        className="relative polish-panel"
       >
         {children}
       </motion.div>
@@ -351,7 +351,7 @@ export default function Lobby() {
   ];
 
   return (
-    <div className="page-bg-lobby w-full relative overflow-hidden min-h-screen bg-[#030712] text-white">
+    <div className="page-bg-lobby w-full relative overflow-hidden min-h-screen bg-background text-foreground">
       {/* Aurora nebula background canvas */}
       <Music3DCanvas mode="nebula" isPlaying={true} speed={0.45} />
 
@@ -438,7 +438,7 @@ export default function Lobby() {
                 void logoutRequest();
                 setLocation('/login');
               }}
-              className="chip-pop p-2 rounded-xl text-white/40 hover:text-white hover:bg-white/5 border border-white/6"
+              className="chip-pop p-2 rounded-xl text-muted-foreground hover:text-white hover:bg-white/5 border border-white/6"
               title="Sign Out"
             >
               <LogOut className="w-4 h-4" />
@@ -454,7 +454,7 @@ export default function Lobby() {
           className="mb-8 flex items-end justify-between gap-4 lg:col-start-1 lg:row-start-2 lg:mb-0"
         >
           <div>
-            <p className="text-[10px] font-bold uppercase tracking-[0.22em] text-cyan-300/60 mb-2 flex items-center gap-2">
+            <p className="text-kicker mb-2 flex items-center gap-2">
               <span className="w-6 h-px bg-gradient-to-r from-cyan-400/70 to-transparent inline-block" />
               Your Lobby
             </p>
@@ -494,7 +494,7 @@ export default function Lobby() {
                 </p>
                 <p className="font-bold text-sm text-white truncate">{myRoom.name}</p>
                 {myRoom.currentTrack?.title && (
-                  <p className="text-[11px] text-white/40 truncate mt-0.5">🎵 {myRoom.currentTrack.title}</p>
+                  <p className="text-[11px] text-muted-foreground truncate mt-0.5">🎵 {myRoom.currentTrack.title}</p>
                 )}
               </div>
               <div className="flex items-center gap-2 shrink-0">
@@ -602,14 +602,14 @@ export default function Lobby() {
                           Spin Up{' '}
                           <span className="text-shimmer">Your Room</span>
                         </h3>
-                        <p className="text-xs text-white/40 mb-7">
+                        <p className="text-xs text-muted-foreground mb-7">
                           Name it, create it, and drop the invite link to your crew.
                         </p>
 
                         <form onSubmit={handleCreateRoom} className="space-y-5">
                           <div>
                             <div className="flex items-center justify-between mb-2 pl-1">
-                              <label className="text-[10px] font-bold text-cyan-300/90 uppercase tracking-[0.18em]">
+                              <label className="form-label">
                                 Room Name
                               </label>
                               {roomName.trim().length >= 2 && (
@@ -630,7 +630,7 @@ export default function Lobby() {
                                 placeholder="e.g. Chill Beats, Bollywood Night..."
                                 value={roomName}
                                 onChange={(e) => setRoomName(e.target.value)}
-                                className={`input-glow w-full pl-5 pr-14 py-4 rounded-2xl text-white text-base font-bold outline-none transition-all placeholder:text-white/30 border ${
+                                className={`input-glow w-full pl-5 pr-14 py-4 rounded-2xl text-white text-base font-bold outline-none transition-all placeholder:text-muted-foreground border ${
                                   roomName.trim().length >= 2
                                     ? 'border-emerald-400/80 focus:border-emerald-400'
                                     : 'border-cyan-500/30 focus:border-cyan-400'
@@ -686,7 +686,7 @@ export default function Lobby() {
                           <button
                             type="submit"
                             disabled={isCreatingRoom || !roomName.trim()}
-                            className="btn-shine btn-3d w-full mt-2 py-4 rounded-2xl font-black text-base flex items-center justify-center gap-2 text-[#02141a] bg-gradient-to-r from-cyan-400 via-sky-400 to-blue-500 disabled:opacity-50 disabled:shadow-none cursor-pointer"
+                            className="action-primary w-full mt-2 py-4 rounded-2xl font-bold text-base flex items-center justify-center gap-2 disabled:opacity-50 disabled:shadow-none cursor-pointer"
                           >
                             {isCreatingRoom ? (
                               <>
@@ -756,7 +756,7 @@ export default function Lobby() {
                       >
                         Drop the <span className="text-shimmer">Invite Code</span>
                       </h3>
-                      <p className="text-xs text-white/40 mb-8">
+                      <p className="text-xs text-muted-foreground mb-8">
                         Paste the code your friend shared — you will land straight in their room.
                       </p>
 
@@ -791,8 +791,8 @@ export default function Lobby() {
                           disabled={!inviteCode.trim()}
                           className={`btn-shine btn-3d w-full py-4 rounded-2xl font-black text-base flex items-center justify-center gap-2 ${
                             inviteCode.trim()
-                              ? 'text-white cursor-pointer bg-gradient-to-r from-blue-600 via-indigo-500 to-violet-600'
-                              : 'text-white/30 bg-white/[0.04] border border-white/8 shadow-none'
+                              ? 'action-primary cursor-pointer'
+                              : 'text-muted-foreground bg-white/[0.04] border border-white/8 shadow-none'
                           }`}
                         >
                           <ArrowRight className="w-5 h-5" /> Join Room Instantly
@@ -843,7 +843,7 @@ export default function Lobby() {
                           >
                             Rooms <span className="text-shimmer">In Session</span>
                           </h3>
-                          <p className="text-xs text-white/40 mt-1.5 mb-7">
+                          <p className="text-xs text-muted-foreground mt-1.5 mb-7">
                             Hop into any public vibe — everyone hears the same beat, synced.
                           </p>
                         </div>
@@ -858,7 +858,7 @@ export default function Lobby() {
                       </div>
 
                       {loadingPublic ? (
-                        <div className="py-14 flex flex-col items-center justify-center text-white/40">
+                        <div className="py-14 flex flex-col items-center justify-center text-muted-foreground">
                           <div className="relative mb-4">
                             <div className="w-12 h-12 rounded-full border-2 border-purple-400/20 border-t-purple-400 animate-spin" />
                             <div className="absolute inset-0 flex items-center justify-center">
@@ -873,7 +873,7 @@ export default function Lobby() {
                             <VinylDisc size={72} labelColor="#a855f7" spinning />
                           </div>
                           <p className="text-sm font-semibold text-white/50">No active rooms found</p>
-                          <p className="text-xs text-white/30 mt-1 max-w-[250px] mx-auto leading-normal">
+                          <p className="text-xs text-muted-foreground mt-1 max-w-[250px] mx-auto leading-normal">
                             Create a new room and share the invite code to start the first party!
                           </p>
                           <button
@@ -908,7 +908,7 @@ export default function Lobby() {
                                   <span className="font-semibold text-sm truncate group-hover:text-purple-200 transition-colors">
                                     {room.name}
                                   </span>
-                                  <span className="text-[10px] bg-white/5 border border-white/8 rounded-full px-2 py-0.5 text-white/40 shrink-0 font-mono">
+                                  <span className="text-[10px] bg-white/5 border border-white/8 rounded-full px-2 py-0.5 text-muted-foreground shrink-0 font-mono">
                                     {room.inviteCode}
                                   </span>
                                 </div>
@@ -975,7 +975,7 @@ export default function Lobby() {
                           >
                             My <span className="text-shimmer">Rooms</span>
                           </h3>
-                          <p className="text-xs text-white/40 mt-1.5 mb-7">
+                          <p className="text-xs text-muted-foreground mt-1.5 mb-7">
                             Every room you joined is listed here. Rejoin any time, or remove it from your list.
                           </p>
                         </div>
@@ -990,7 +990,7 @@ export default function Lobby() {
                       </div>
 
                       {loadingMyRooms ? (
-                        <div className="py-14 flex flex-col items-center justify-center text-white/40">
+                        <div className="py-14 flex flex-col items-center justify-center text-muted-foreground">
                           <div className="relative mb-4">
                             <div className="w-12 h-12 rounded-full border-2 border-emerald-400/20 border-t-emerald-400 animate-spin" />
                             <div className="absolute inset-0 flex items-center justify-center">
@@ -1005,7 +1005,7 @@ export default function Lobby() {
                             <VinylDisc size={72} labelColor="#10b981" spinning />
                           </div>
                           <p className="text-sm font-semibold text-white/50">No rooms saved yet</p>
-                          <p className="text-xs text-white/30 mt-1 max-w-[260px] mx-auto leading-normal">
+                          <p className="text-xs text-muted-foreground mt-1 max-w-[260px] mx-auto leading-normal">
                             Create or join a room and it will appear here, tied to your account.
                           </p>
                           <button
@@ -1040,7 +1040,7 @@ export default function Lobby() {
                                   <span className="font-semibold text-sm truncate group-hover:text-emerald-200 transition-colors">
                                     {room.name}
                                   </span>
-                                  <span className="text-[10px] bg-white/5 border border-white/8 rounded-full px-2 py-0.5 text-white/40 shrink-0 font-mono">
+                                  <span className="text-[10px] bg-white/5 border border-white/8 rounded-full px-2 py-0.5 text-muted-foreground shrink-0 font-mono">
                                     {room.inviteCode}
                                   </span>
                                 </div>
@@ -1104,7 +1104,7 @@ export default function Lobby() {
                 >
                   <Clock className="w-3 h-3 text-cyan-400" />
                 </div>
-                <h3 className="text-[10px] font-bold text-white/40 uppercase tracking-[0.2em]">Recent Vibe History</h3>
+                <h3 className="text-[10px] font-bold text-muted-foreground uppercase tracking-[0.2em]">Recent Vibe History</h3>
                 <span className="flex-1 h-px bg-gradient-to-r from-cyan-500/20 via-white/8 to-transparent" />
               </div>
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 lg:grid-cols-1">
@@ -1120,12 +1120,12 @@ export default function Lobby() {
                       <p className="font-semibold text-sm truncate text-white/80 group-hover:text-cyan-300 transition-colors">
                         {room.name}
                       </p>
-                      <p className="text-[10px] text-white/30 font-mono mt-0.5">Code: {room.inviteCode}</p>
+                      <p className="text-[10px] text-muted-foreground font-mono mt-0.5">Code: {room.inviteCode}</p>
                     </button>
                     <div className="flex items-center gap-1 opacity-40 group-hover:opacity-100 transition-opacity">
                       <button
                         onClick={() => removeRoom(room.inviteCode)}
-                        className="chip-pop p-1.5 rounded-lg text-white/30 hover:text-red-400 hover:bg-red-500/10"
+                        className="chip-pop p-1.5 rounded-lg text-muted-foreground hover:text-red-400 hover:bg-red-500/10"
                         title="Remove history"
                       >
                         <Trash2 className="w-3.5 h-3.5" />
@@ -1158,7 +1158,7 @@ export default function Lobby() {
               animate={{ opacity: 1, y: 0 }}
               transition={{ delay: 0.2 + i * 0.05 }}
             >
-              <Card3DTilt maxTilt={10} scale={1.03} glare className="rounded-2xl block">
+              <Card3DTilt maxTilt={0} scale={1} glare={false} className="rounded-2xl block">
                 <div
                   className="rounded-2xl p-4 text-center cursor-default border border-white/6"
                   style={{ background: 'rgba(3,12,22,0.5)', backdropFilter: 'blur(16px)' }}
@@ -1174,7 +1174,7 @@ export default function Lobby() {
                     <Icon className="w-4 h-4" style={{ color }} />
                   </div>
                   <p className="text-[11px] font-bold text-white mb-0.5">{label}</p>
-                  <p className="text-[9px] text-white/30 leading-tight">{desc}</p>
+                  <p className="text-[9px] text-muted-foreground leading-tight">{desc}</p>
                 </div>
               </Card3DTilt>
             </motion.div>

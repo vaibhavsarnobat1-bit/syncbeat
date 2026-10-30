@@ -106,66 +106,12 @@ const HOW_IT_WORKS = [
   },
 ];
 
-const VIBE_STATIONS = [
-  {
-    id: 'lofi',
-    name: 'Midnight Lo-Fi & Study',
-    emoji: '🌙',
-    badge: 'Deep Focus',
-    genre: 'Lo-Fi Chill & Beats',
-    desc: 'Gentle vinyl crackles, rainy keys, and chill instrumental beats to study or unwind.',
-    artists: 'Lofi Girl, ChilledCow, Synthwave Chill',
-    gradient: 'from-violet-600/30 via-indigo-600/20 to-blue-600/10',
-    border: 'border-violet-500/30 hover:border-violet-400',
-    glowColor: '#8b5cf6',
-    accentBadge: 'bg-violet-500/20 text-violet-300 border-violet-500/30',
-  },
-  {
-    id: 'desi',
-    name: 'Bollywood & Desi Bangers',
-    emoji: '🔥',
-    badge: 'Trending Now',
-    genre: 'Bollywood & Punjabi Pop',
-    desc: 'Chart-busting Hindi, Punjabi, and fusion anthems made for shared sing-alongs.',
-    artists: 'Arijit Singh, Diljit Dosanjh, AP Dhillon, Pritam',
-    gradient: 'from-amber-600/30 via-orange-600/20 to-red-600/10',
-    border: 'border-amber-500/30 hover:border-amber-400',
-    glowColor: '#f59e0b',
-    accentBadge: 'bg-amber-500/20 text-amber-300 border-amber-500/30',
-  },
-  {
-    id: 'edm',
-    name: 'Cyberpunk & EDM Stage',
-    emoji: '⚡',
-    badge: 'High Energy',
-    genre: 'Electronic & Synthwave',
-    desc: 'Heavy bass drops, cyberpunk synthwave, and festival bangers with crisp audio sync.',
-    artists: 'Kavinsky, Martin Garrix, Daft Punk, Skrillex',
-    gradient: 'from-cyan-600/30 via-blue-600/20 to-indigo-600/10',
-    border: 'border-cyan-500/30 hover:border-cyan-400',
-    glowColor: '#06b6d4',
-    accentBadge: 'bg-cyan-500/20 text-cyan-300 border-cyan-500/30',
-  },
-  {
-    id: 'acoustic',
-    name: 'Acoustic Sunset & Indie',
-    emoji: '🌅',
-    badge: 'Calm & Soulful',
-    genre: 'Indie Folk & Coffeehouse',
-    desc: 'Warm acoustic guitars, soothing indie vocals, and sunset vibes with loved ones.',
-    artists: 'Jack Johnson, Prateek Kuhad, Ed Sheeran, Anuv Jain',
-    gradient: 'from-pink-600/30 via-rose-600/20 to-amber-600/10',
-    border: 'border-pink-500/30 hover:border-pink-400',
-    glowColor: '#ec4899',
-    accentBadge: 'bg-pink-500/20 text-pink-300 border-pink-500/30',
-  },
-];
-
 export default function Home() {
   const [, setLocation] = useLocation();
 
   // Floating Player Interactive State with REAL Instrumental Chill Audio
   const audioRef = useRef<HTMLAudioElement | null>(null);
+  const userPausedRef = useRef(false);
   const [isPlaying, setIsPlaying] = useState(false);
   const [isLiked, setIsLiked] = useState(false);
   const [isShuffled, setIsShuffled] = useState(false);
@@ -185,47 +131,69 @@ export default function Home() {
     }, 1800);
   };
 
-  // Auto-play music when entering the site
+  // Auto-play music when entering the site, and keep it running for the whole visit.
+  // Browsers block sound until the visitor interacts, so retries stay armed until one succeeds,
+  // and a pause the visitor did not ask for (loop skip, browser intervention) is recovered.
   useEffect(() => {
-    const tryAutoplay = () => {
-      if (!audioRef.current || isPlaying) return;
-      audioRef.current.play().then(() => {
-        setIsPlaying(true);
-      }).catch(() => {
-        // Modern browsers block sound until any user interaction on document
-        const onFirstInteraction = () => {
-          if (audioRef.current && !isPlaying) {
-            audioRef.current.play().then(() => {
-              setIsPlaying(true);
-            }).catch(() => {});
-          }
-          window.removeEventListener('click', onFirstInteraction);
-          window.removeEventListener('keydown', onFirstInteraction);
-          window.removeEventListener('touchstart', onFirstInteraction);
-          window.removeEventListener('scroll', onFirstInteraction);
-        };
-        window.addEventListener('click', onFirstInteraction, { once: true });
-        window.addEventListener('keydown', onFirstInteraction, { once: true });
-        window.addEventListener('touchstart', onFirstInteraction, { once: true });
-        window.addEventListener('scroll', onFirstInteraction, { once: true });
-      });
+    const el = audioRef.current;
+    if (!el) return;
+
+    const sync = () => setIsPlaying(!el.paused);
+    const resumeIfStalled = () => {
+      if (userPausedRef.current || !el.paused) return;
+      el.play().catch(() => { /* the next gesture retry will pick it up */ });
+    };
+    const handlePause = () => {
+      sync();
+      // Only the pause button and the vinyl stop this preview; anything else is a stall.
+      resumeIfStalled();
+    };
+    const retryOnGesture = () => {
+      if (userPausedRef.current || !el.paused) {
+        stopWatching();
+        return;
+      }
+      el.play().catch(() => { /* keep waiting for a gesture that Chrome accepts */ });
+    };
+    const stopWatching = () => {
+      window.removeEventListener('pointerdown', retryOnGesture);
+      window.removeEventListener('keydown', retryOnGesture);
     };
 
-    tryAutoplay();
+    el.addEventListener('play', sync);
+    el.addEventListener('playing', sync);
+    el.addEventListener('pause', handlePause);
+    el.addEventListener('ended', resumeIfStalled);
+    el.addEventListener('error', resumeIfStalled);
+    window.addEventListener('pointerdown', retryOnGesture);
+    window.addEventListener('keydown', retryOnGesture);
+
+    el.play().catch(() => { /* blocked until the first gesture */ });
+
+    return () => {
+      el.removeEventListener('play', sync);
+      el.removeEventListener('playing', sync);
+      el.removeEventListener('pause', handlePause);
+      el.removeEventListener('ended', resumeIfStalled);
+      el.removeEventListener('error', resumeIfStalled);
+      stopWatching();
+    };
   }, []);
 
   const togglePlayAudio = () => {
-    if (!audioRef.current) return;
-    if (isPlaying) {
-      audioRef.current.pause();
-      setIsPlaying(false);
-    } else {
-      audioRef.current.play().then(() => {
-        setIsPlaying(true);
-      }).catch((err) => {
-        console.warn('Audio play prevented:', err);
-      });
+    const el = audioRef.current;
+    if (!el) return;
+    if (!el.paused) {
+      userPausedRef.current = true;
+      el.pause();
+      return;
     }
+    userPausedRef.current = false;
+    el.play().then(() => {
+      setIsPlaying(true);
+    }).catch((err) => {
+      console.warn('Audio play prevented:', err);
+    });
   };
 
   const handleAudioTimeUpdate = () => {
@@ -269,7 +237,7 @@ export default function Home() {
       </div>
 
       {/* ─── HEADER / NAVIGATION ─── */}
-      <header className="fixed top-0 left-0 right-0 z-50 bg-[#05070e]/80 backdrop-blur-xl border-b border-white/[0.06]">
+      <header className="fixed top-0 left-0 right-0 z-50 surface-header backdrop-blur-xl border-b">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 h-20 flex items-center justify-between">
           
           {/* Brand Logo */}
@@ -358,13 +326,14 @@ export default function Home() {
               onClick={() => setShowDownloadModal(true)}
               className="inline-flex items-center gap-1.5 px-2.5 sm:px-3 py-2 rounded-full text-xs font-bold text-cyan-300 bg-cyan-500/10 hover:bg-cyan-500/20 border border-cyan-500/30 transition-all duration-200 cursor-pointer"
               title="Download & Install App with QR Code"
+              aria-label="Download & Install App with QR Code"
             >
               <QrCode className="w-3.5 h-3.5" />
               <span className="hidden md:inline">Install App</span>
             </button>
             <button
               onClick={() => setLocation('/login')}
-              className="flex items-center gap-1.5 px-3.5 sm:px-4 py-2 rounded-full text-xs sm:text-sm font-bold text-white bg-gradient-to-r from-cyan-500 to-blue-600 hover:from-cyan-400 hover:to-blue-500 shadow-md shadow-cyan-500/25 hover:scale-[1.02] active:scale-[0.98] transition-all"
+              className="flex items-center gap-1.5 px-3.5 sm:px-4 py-2 rounded-full text-xs sm:text-sm font-bold action-primary hover:scale-[1.02] active:scale-[0.98] transition-[color,background-color,border-color,box-shadow,transform]"
             >
               <span>Start Listening</span>
               <ArrowRight className="w-3.5 h-3.5" />
@@ -407,27 +376,16 @@ export default function Home() {
               ))}
             </motion.div>
 
-            {/* Vibe Together Tagline Pill */}
-            <motion.div
-              initial={{ opacity: 0, y: -10 }}
-              animate={{ opacity: 1, y: 0 }}
-              transition={{ duration: 0.5, delay: 0.1 }}
-              className="inline-flex items-center gap-2 px-4 py-1.5 rounded-full bg-[#06b6d4]/10 border border-[#06b6d4]/30 text-[#38bdf8] text-xs sm:text-sm font-semibold mb-6 shadow-sm shadow-[#06b6d4]/10"
-            >
-              <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
-              <span>Vibe together in real-time</span>
-            </motion.div>
-
             {/* Huge Bold Title — Perfectly Centered on Mobile & Laptop */}
             <motion.h1
               initial={{ opacity: 0, y: 20 }}
               animate={{ opacity: 1, y: 0 }}
               transition={{ duration: 0.6, delay: 0.15 }}
-              className="text-4xl sm:text-6xl lg:text-7xl xl:text-8xl font-black text-white tracking-tight leading-[1.06] mb-6 drop-shadow-sm text-center"
+              className="text-4xl sm:text-6xl lg:text-7xl xl:text-8xl font-semibold text-foreground tracking-tight leading-[1.06] mb-6 drop-shadow-sm text-center"
             >
               Music is better
               <br />
-              <span className="text-shimmer drop-shadow-[0_10px_35px_rgba(56,189,248,0.4)]">
+              <span className="text-shimmer">
                 together.
               </span>
             </motion.h1>
@@ -437,7 +395,7 @@ export default function Home() {
               initial={{ opacity: 0, y: 20 }}
               animate={{ opacity: 1, y: 0 }}
               transition={{ duration: 0.6, delay: 0.25 }}
-              className="text-sm sm:text-lg lg:text-xl text-slate-300/80 font-normal leading-relaxed max-w-xl mx-auto mb-8 text-center px-4"
+              className="text-sm sm:text-lg lg:text-xl text-muted-foreground font-normal leading-relaxed max-w-xl mx-auto mb-8 text-center px-4"
             >
               Create a room, share a link, and enjoy perfectly synced music with your friends — anywhere in the world.
             </motion.p>
@@ -451,9 +409,9 @@ export default function Home() {
             >
               <button
                 onClick={() => setLocation('/login')}
-                className="w-full sm:w-auto whitespace-nowrap group flex items-center justify-center gap-3 px-8 py-4 rounded-full bg-gradient-to-r from-[#06b6d4] via-[#0284c7] to-[#2563eb] hover:from-[#22d3ee] hover:to-[#3b82f6] text-white font-extrabold text-base sm:text-lg shadow-[0_0_35px_rgba(6,182,212,0.45)] hover:shadow-[0_0_55px_rgba(56,189,248,0.7)] hover:scale-[1.02] active:scale-[0.98] transition-all duration-300"
+                className="w-full sm:w-auto whitespace-nowrap group flex items-center justify-center gap-3 px-8 py-4 rounded-full action-primary font-extrabold text-base sm:text-lg hover:scale-[1.02] active:scale-[0.98] transition-[color,background-color,border-color,box-shadow,transform] duration-300"
               >
-                <Headphones className="w-5 h-5 text-white group-hover:scale-110 transition-transform" />
+                <Headphones className="w-5 h-5 text-current group-hover:scale-110 transition-transform" />
                 <span>Start Listening</span>
                 <ArrowRight className="w-4 h-4 ml-0.5 group-hover:translate-x-1 transition-transform" />
               </button>
@@ -694,7 +652,7 @@ export default function Home() {
         <div className="max-w-7xl mx-auto">
           
           <div className="text-center max-w-2xl mx-auto mb-16">
-            <span className="text-xs font-bold uppercase tracking-[0.2em] text-[#38bdf8]">
+            <span className="text-kicker">
               Seamless & Instant
             </span>
             <h2 className="text-3xl sm:text-5xl font-black text-white mt-2 mb-4 tracking-tight">
@@ -741,7 +699,7 @@ export default function Home() {
         </div>
       </section>
 
-      {/* ─── INTERACTIVE VIBE STATIONS & INSTANT SYNC ENGINE ─── */}
+      {/* ─── INSTANT SYNC ENGINE ─── */}
       <section className="py-20 px-4 sm:px-6 lg:px-8 bg-gradient-to-b from-[#05070e] via-[#070d1e] to-[#05070e] border-t border-b border-cyan-500/15 relative overflow-hidden">
         {/* Ambient background glow orb */}
         <div
@@ -750,92 +708,6 @@ export default function Home() {
         />
 
         <div className="max-w-7xl mx-auto relative z-10">
-          
-          {/* Header */}
-          <div className="flex flex-col md:flex-row md:items-end justify-between mb-12 gap-4">
-            <div>
-              <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-cyan-500/10 border border-cyan-400/30 text-cyan-300 text-xs font-bold uppercase tracking-wider mb-2">
-                <Sparkles className="w-3 h-3 text-cyan-400" />
-                <span>Instant Vibe Stations</span>
-              </div>
-              <h2 className="text-3xl sm:text-4xl lg:text-5xl font-black text-white tracking-tight">
-                Pick Your Mood & Listen Instantly
-              </h2>
-              <p className="text-slate-400 text-sm sm:text-base mt-2 max-w-2xl">
-                Choose a sound atmosphere or launch your own room in seconds — zero sign-up required.
-              </p>
-            </div>
-
-            <button
-              onClick={() => setLocation('/lobby')}
-              className="inline-flex items-center gap-2 px-5 py-2.5 rounded-xl bg-white/5 hover:bg-cyan-500/15 border border-white/10 hover:border-cyan-400/40 text-sm font-semibold text-cyan-300 hover:text-white transition-all shrink-0 shadow-lg cursor-pointer"
-            >
-              <span>Explore All Rooms</span>
-              <ChevronRight className="w-4 h-4" />
-            </button>
-          </div>
-
-          {/* 4 Interactive Vibe Cards */}
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-5 mb-12">
-            {VIBE_STATIONS.map((vibe, idx) => (
-              <motion.div
-                key={vibe.id}
-                initial={{ opacity: 0, y: 16 }}
-                whileInView={{ opacity: 1, y: 0 }}
-                viewport={{ once: true }}
-                transition={{ duration: 0.4, delay: idx * 0.08 }}
-                onClick={() => setLocation('/lobby')}
-                className={`group cursor-pointer rounded-3xl p-5 bg-gradient-to-b ${vibe.gradient} border ${vibe.border} backdrop-blur-xl hover:shadow-xl transition-all duration-300 flex flex-col justify-between relative overflow-hidden`}
-                style={{
-                  boxShadow: '0 8px 30px rgba(0,0,0,0.5)',
-                }}
-              >
-                {/* Subtle top glow highlight */}
-                <div
-                  className="absolute top-0 left-0 right-0 h-1 opacity-60"
-                  style={{ background: `linear-gradient(90deg, transparent, ${vibe.glowColor}, transparent)` }}
-                />
-
-                <div>
-                  {/* Top Bar with Emoji & Badge */}
-                  <div className="flex items-center justify-between mb-4">
-                    <span className="text-3xl">{vibe.emoji}</span>
-                    <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full border ${vibe.accentBadge}`}>
-                      {vibe.badge}
-                    </span>
-                  </div>
-
-                  {/* Title & Genre */}
-                  <h3 className="text-white font-extrabold text-lg group-hover:text-cyan-200 transition-colors">
-                    {vibe.name}
-                  </h3>
-                  <p className="text-cyan-400/80 text-xs font-semibold mt-0.5">
-                    {vibe.genre}
-                  </p>
-
-                  {/* Description */}
-                  <p className="text-slate-300/70 text-xs leading-relaxed mt-2.5 mb-4 line-clamp-2">
-                    {vibe.desc}
-                  </p>
-                </div>
-
-                <div>
-                  {/* Top artists tag */}
-                  <div className="text-[11px] text-white/40 mb-3 truncate flex items-center gap-1.5 font-mono">
-                    <Headphones className="w-3 h-3 text-cyan-400 shrink-0" />
-                    <span className="truncate">{vibe.artists}</span>
-                  </div>
-
-                  {/* Action link */}
-                  <div className="pt-3 border-t border-white/10 flex items-center justify-between text-xs font-bold text-white group-hover:text-cyan-300 transition-colors">
-                    <span>Start This Vibe</span>
-                    <ArrowRight className="w-4 h-4 group-hover:translate-x-1 transition-transform" />
-                  </div>
-                </div>
-              </motion.div>
-            ))}
-          </div>
-
           {/* Interactive Live Sync Showcase & Quick Launcher */}
           <div className="rounded-3xl p-6 sm:p-8 bg-[#090f20]/80 border border-cyan-500/20 backdrop-blur-2xl relative overflow-hidden shadow-2xl">
             <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 items-center">
@@ -847,7 +719,7 @@ export default function Home() {
                     <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-cyan-400 opacity-75" />
                     <span className="relative inline-flex rounded-full h-2.5 w-2.5 bg-cyan-500" />
                   </span>
-                  <span className="text-xs font-bold text-cyan-300 uppercase tracking-wider font-mono">
+                  <span className="text-kicker font-mono">
                     Sub-Millisecond Engine Live Demo
                   </span>
                 </div>
@@ -910,7 +782,7 @@ export default function Home() {
 
                   {/* Reaction trigger bar */}
                   <div className="mt-4 pt-3 border-t border-white/8 flex items-center justify-between gap-2">
-                    <span className="text-[11px] text-white/40 font-semibold">Test real-time reaction:</span>
+                    <span className="text-[11px] text-muted-foreground font-semibold">Test real-time reaction:</span>
                     <div className="flex items-center gap-1.5">
                       {['🔥', '💖', '🎧', '⚡', '🎉'].map((emoji) => (
                         <button
@@ -944,13 +816,13 @@ export default function Home() {
               {/* Right Column: 1-Click Quick Room Launcher */}
               <div className="lg:col-span-5 p-5 rounded-2xl bg-gradient-to-br from-cyan-950/40 via-blue-950/20 to-purple-950/30 border border-cyan-400/25 flex flex-col justify-between">
                 <div>
-                  <span className="text-[10px] font-bold text-cyan-300 uppercase tracking-wider font-mono">
+                  <span className="text-kicker font-mono">
                     Instant Room Launch
                   </span>
                   <h4 className="text-base font-extrabold text-white mt-1">
                     Ready to Listen Together?
                   </h4>
-                  <p className="text-xs text-white/50 mt-1">
+                  <p className="text-xs text-muted-foreground mt-1">
                     Create a room right now and share the link with anyone.
                   </p>
                 </div>
@@ -965,7 +837,7 @@ export default function Home() {
                       onKeyDown={(e) => {
                         if (e.key === 'Enter') setLocation('/lobby');
                       }}
-                      className={`w-full pl-3.5 pr-9 py-2.5 rounded-xl bg-black/50 border text-xs text-white placeholder:text-white/30 outline-none transition-all ${
+                      className={`w-full pl-3.5 pr-9 py-2.5 rounded-xl bg-black/50 border text-xs text-white placeholder:text-muted-foreground outline-none transition-all ${
                         quickRoomName.trim().length >= 2
                           ? 'border-emerald-400/80 focus:border-emerald-400'
                           : 'border-white/10 focus:border-cyan-400'
@@ -987,7 +859,7 @@ export default function Home() {
                   </button>
                 </div>
 
-                <div className="mt-4 pt-3 border-t border-white/8 grid grid-cols-2 gap-2 text-[10px] text-white/50">
+                <div className="mt-4 pt-3 border-t border-white/8 grid grid-cols-2 gap-2 text-[10px] text-muted-foreground">
                   <div className="flex items-center gap-1.5">
                     <CheckCircle2 className="w-3 h-3 text-cyan-400 shrink-0" />
                     <span>100% Free Forever</span>
@@ -1018,7 +890,7 @@ export default function Home() {
         <div className="max-w-7xl mx-auto">
           
           <div className="text-center max-w-2xl mx-auto mb-16">
-            <span className="text-xs font-bold uppercase tracking-[0.2em] text-[#38bdf8]">
+            <span className="text-kicker">
               Packed with Features
             </span>
             <h2 className="text-3xl sm:text-5xl font-black text-white mt-2 mb-4 tracking-tight">
@@ -1085,7 +957,7 @@ export default function Home() {
               <div className="flex flex-col sm:flex-row items-center justify-center gap-4">
                 <button
                   onClick={() => setLocation('/login')}
-                  className="w-full sm:w-auto px-8 py-4 rounded-full bg-gradient-to-r from-[#8b5cf6] via-[#6366f1] to-[#38bdf8] text-white font-bold text-base shadow-[0_0_30px_rgba(99,102,241,0.5)] hover:scale-105 active:scale-95 transition-all duration-200"
+                  className="w-full sm:w-auto px-8 py-4 rounded-full action-primary font-bold text-base hover:scale-105 active:scale-95 transition-[color,background-color,border-color,box-shadow,transform] duration-200"
                 >
                   Start Listening Now
                 </button>

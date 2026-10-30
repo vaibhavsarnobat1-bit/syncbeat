@@ -1082,7 +1082,7 @@ export default function RoomPage() {
 
   return (
     <div
-      className="w-full h-screen flex flex-col overflow-hidden bg-[#030c12] text-white relative"
+      className="w-full h-screen flex flex-col overflow-hidden bg-background text-foreground relative"
       style={{ '--sb-hue': moodHue } as React.CSSProperties}
     >
       {/* 3D Reaction Burst Particle Emitter */}
@@ -1102,7 +1102,7 @@ export default function RoomPage() {
       />
 
       {/* Header */}
-      <header className="h-14 border-b border-white/8 flex items-center justify-between px-3 sm:px-4 shrink-0 bg-[#060a16]/80 backdrop-blur-2xl z-30">
+      <header className="surface-header h-14 border-b flex items-center justify-between px-3 sm:px-4 shrink-0 z-30">
         <div className="flex items-center gap-3 min-w-0">
           <button
             onClick={() => setLocation('/lobby')}
@@ -1131,7 +1131,7 @@ export default function RoomPage() {
                 </span>
               )}
             </h1>
-            <div className="flex items-center gap-2 text-[10px] text-white/35">
+            <div className="flex items-center gap-2 text-[10px] text-muted-foreground">
               <span
                 className={`w-1.5 h-1.5 rounded-full shrink-0 ${isConnected ? 'bg-green-400' : roomGone ? 'bg-red-500' : 'bg-yellow-500 animate-pulse'}`}
                 style={isConnected ? { boxShadow: '0 0 8px rgba(74,222,128,0.8)' } : undefined}
@@ -1216,7 +1216,7 @@ export default function RoomPage() {
                           </span>
                           <div className="min-w-0 flex-1">
                             <p className="text-[11px] font-bold text-white/85 truncate">{m.displayName}</p>
-                            <p className="text-[9px] text-white/35 font-medium truncate">
+                            <p className="text-[9px] text-muted-foreground font-medium truncate">
                               {m.userId === activeRoom.hostUserId ? 'Room host' : isYou ? 'You' : 'Listening'}
                             </p>
                           </div>
@@ -1229,7 +1229,7 @@ export default function RoomPage() {
                       );
                     })}
                     {members.length === 0 && (
-                      <p className="px-3 py-3 text-[11px] text-white/35">Nobody else has joined yet.</p>
+                      <p className="px-3 py-3 text-[11px] text-muted-foreground">Nobody else has joined yet.</p>
                     )}
                   </div>
                   <div className="px-3 py-2 border-t border-white/6 bg-white/[0.02]">
@@ -1265,6 +1265,8 @@ export default function RoomPage() {
           {/* Mobile drawer toggle */}
           <button
             onClick={() => setShowChat((v) => !v)}
+            aria-label={showChat ? 'Close room chat' : 'Open room chat'}
+            aria-expanded={showChat}
             className="lg:hidden relative p-2 rounded-xl bg-white/[0.04] hover:bg-white/5 transition-colors border border-white/8"
           >
             <MessageCircle className="w-4 h-4" />
@@ -1314,14 +1316,15 @@ export default function RoomPage() {
             <div ref={searchRef} className="relative z-20">
               <form onSubmit={handleSearchSubmit} className="flex gap-2">
                 <div className="relative flex-1">
-                  <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-white/30 pointer-events-none" />
+                  <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground pointer-events-none" />
                   <input
                     type="text"
                     placeholder="Search songs, artists (e.g. Arijit, Ed Sheeran, Hindi songs)..."
                     value={query}
                     onChange={handleQueryChange}
                     onFocus={() => searchResults.length > 0 && setShowResults(true)}
-                    className="input-glow w-full pl-10 pr-9 py-3 rounded-xl bg-white/[0.03] border border-white/8 outline-none text-sm focus:border-cyan-400/50 transition-all"
+                    aria-label="Search songs or artists"
+                    className="field-surface w-full pl-10 pr-9 py-3 rounded-xl text-sm"
                     autoComplete="off"
                   />
                   {query && (
@@ -1332,7 +1335,7 @@ export default function RoomPage() {
                         setSearchResults([]);
                         setShowResults(false);
                       }}
-                      className="absolute right-3 top-1/2 -translate-y-1/2 text-white/30 hover:text-white"
+                      className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-white"
                     >
                       <X className="w-4 h-4" />
                     </button>
@@ -1341,7 +1344,7 @@ export default function RoomPage() {
                 <button
                   type="submit"
                   disabled={!query.trim() || isSearching}
-                  className="btn-shine chip-pop px-5 py-3 rounded-xl bg-gradient-to-r from-cyan-400 to-blue-500 hover:from-cyan-300 hover:to-blue-400 text-black font-bold text-xs sm:text-sm transition-all disabled:opacity-40 disabled:from-white/10 disabled:to-white/10 disabled:text-white/40 flex items-center gap-1.5 shadow-[0_0_22px_rgba(0,212,212,0.25)]"
+                  className="action-primary px-5 py-3 rounded-xl font-bold text-xs sm:text-sm disabled:opacity-40 flex items-center gap-1.5"
                 >
                   {isSearching ? <Loader2 className="w-4 h-4 animate-spin" /> : <Search className="w-4 h-4" />}
                   <span>Search</span>
@@ -1352,7 +1355,7 @@ export default function RoomPage() {
               <div className="flex flex-col gap-2.5 mt-3 px-1">
                 {/* Language Chips */}
                 <div className="flex flex-wrap items-center gap-1.5">
-                  <span className="text-[10px] text-white/30 font-bold uppercase tracking-[0.14em] shrink-0 mr-1">
+                  <span className="text-[10px] text-muted-foreground font-bold uppercase tracking-[0.14em] shrink-0 mr-1">
                     Languages:
                   </span>
                   {SUGGESTED_LANGUAGES.map((lang) => (
@@ -1372,7 +1375,7 @@ export default function RoomPage() {
 
                 {/* Artist Pills */}
                 <div className="flex flex-wrap items-center gap-1.5">
-                  <span className="text-[10px] text-white/30 font-bold uppercase tracking-[0.14em] shrink-0 mr-1">
+                  <span className="text-[10px] text-muted-foreground font-bold uppercase tracking-[0.14em] shrink-0 mr-1">
                     Popular Singers:
                   </span>
                   {SUGGESTED_SINGERS.map((singer) => (
@@ -1401,12 +1404,12 @@ export default function RoomPage() {
                     className="absolute top-full mt-2 left-0 right-0 bg-[#0b0f1c]/95 backdrop-blur-2xl border border-white/12 rounded-2xl shadow-2xl overflow-hidden max-h-[350px] overflow-y-auto z-40"
                   >
                     {isSearching ? (
-                      <div className="flex items-center justify-center gap-2 py-8 text-white/30">
+                      <div className="flex items-center justify-center gap-2 py-8 text-muted-foreground">
                         <Loader2 className="w-5 h-5 animate-spin text-cyan-400" />
                         <span className="text-sm">Fetching matched streams...</span>
                       </div>
                     ) : searchResults.length === 0 ? (
-                      <div className="flex items-center justify-center gap-2 py-8 text-white/30">
+                      <div className="flex items-center justify-center gap-2 py-8 text-muted-foreground">
                         <Music2 className="w-5 h-5" />
                         <span className="text-sm">No match. Try singer name!</span>
                       </div>
@@ -1435,10 +1438,10 @@ export default function RoomPage() {
                                 className="flex-1 min-w-0 text-left"
                               >
                                 <p className="text-sm font-semibold truncate text-white/95">{result.title}</p>
-                                <p className="text-xs text-white/35 mt-0.5 truncate">{result.channel}</p>
+                                <p className="text-xs text-muted-foreground mt-0.5 truncate">{result.channel}</p>
                               </button>
                               {result.duration > 0 && (
-                                <span className="text-[11px] text-white/35 font-mono shrink-0 mr-1">
+                                <span className="text-[11px] text-muted-foreground font-mono shrink-0 mr-1">
                                   {formatDuration(result.duration)}
                                 </span>
                               )}
@@ -1446,7 +1449,7 @@ export default function RoomPage() {
                                 type="button"
                                 onClick={() => handleSelectResult(result, 'queue')}
                                 title="Add to room queue"
-                                className="chip-pop w-7 h-7 flex items-center justify-center rounded-lg bg-white/5 hover:bg-cyan-500/25 hover:text-cyan-400 text-white/30 transition-all shrink-0 opacity-0 group-hover:opacity-100 border border-white/8"
+                                className="chip-pop w-7 h-7 flex items-center justify-center rounded-lg bg-white/5 hover:bg-cyan-500/25 hover:text-cyan-400 text-muted-foreground transition-all shrink-0 opacity-0 group-hover:opacity-100 border border-white/8"
                               >
                                 <Plus className="w-3.5 h-3.5" />
                               </button>
@@ -1533,7 +1536,7 @@ export default function RoomPage() {
                     >
                       {deviceTrack.title}
                     </p>
-                    <p className="text-[11px] text-white/35 mt-1.5">
+                    <p className="text-[11px] text-muted-foreground mt-1.5">
                       {deviceTrack.uploadedBy ? `From ${deviceTrack.uploadedBy}'s device` : "From a member's device"} · {members.length} {members.length === 1 ? 'person' : 'people'} listening
                     </p>
                     {deviceTrack.uploadedBy && deviceTrack.uploadedBy !== user?.displayName && (
@@ -1582,7 +1585,7 @@ export default function RoomPage() {
                     >
                       This Room Has Ended
                     </p>
-                    <p className="text-xs text-white/30 mt-1 mb-4">
+                    <p className="text-xs text-muted-foreground mt-1 mb-4">
                       The server no longer knows invite {inviteCode}. Songs can&apos;t sync here anymore.
                     </p>
                     <button
@@ -1608,7 +1611,7 @@ export default function RoomPage() {
                     >
                       Choose a Song to Start Listening
                     </p>
-                    <p className="text-xs text-white/30 mt-1">Select from suggestions or search above</p>
+                    <p className="text-xs text-muted-foreground mt-1">Select from suggestions or search above</p>
                   </div>
                 )}
 
@@ -1635,7 +1638,7 @@ export default function RoomPage() {
 
             {/* Reaction Bar with 3D Emitter Trigger */}
             <div className="flex items-center gap-1.5 overflow-x-auto scrollbar-hide pb-0.5">
-              <span className="text-[10px] text-white/30 font-bold uppercase tracking-[0.14em] shrink-0 mr-1">
+              <span className="text-[10px] text-muted-foreground font-bold uppercase tracking-[0.14em] shrink-0 mr-1">
                 3D Burst React:
               </span>
               {REACTION_EMOJIS.map((e) => (
@@ -1698,7 +1701,7 @@ export default function RoomPage() {
                       {activeRoom.isPlaying ? 'NOW PLAYING' : 'PAUSED'}
                     </p>
                     {queue.length > 0 && (
-                      <span className="text-[10px] text-white/30 font-semibold">
+                      <span className="text-[10px] text-muted-foreground font-semibold">
                         · {queue.length} {queue.length === 1 ? 'track' : 'tracks'} queued
                       </span>
                     )}
@@ -1744,13 +1747,13 @@ export default function RoomPage() {
                 <div className="divide-y divide-white/5 max-h-[220px] overflow-y-auto scrollbar-hide">
                   {queue.map((qTrack, idx) => (
                     <div key={qTrack.videoId + '-' + idx} className="row-slide flex items-center gap-3 px-3 py-2.5 hover:bg-white/[0.03] group">
-                      <span className="text-[10px] text-white/25 font-mono w-4 text-center shrink-0">{idx + 1}</span>
+                      <span className="text-[10px] text-muted-foreground font-mono w-4 text-center shrink-0">{idx + 1}</span>
                       <img src={qTrack.thumbnail || '/brand-icon-192.png'} alt="" className="w-10 h-7 rounded object-cover shrink-0 border border-white/8" />
                       <div className="flex-grow min-w-0">
                         <p className="text-xs font-medium truncate text-white/80 group-hover:text-white transition-colors">{qTrack.title}</p>
                       </div>
                       {qTrack.duration > 0 && (
-                        <span className="text-[10px] text-white/25 font-mono shrink-0 mr-1">
+                        <span className="text-[10px] text-muted-foreground font-mono shrink-0 mr-1">
                           {formatDuration(qTrack.duration)}
                         </span>
                       )}
@@ -1784,7 +1787,7 @@ export default function RoomPage() {
                     onClick={() => setTrendingTab('youtube')}
                     title="YouTube Trending"
                     className={`relative flex items-center gap-1.5 px-2.5 py-1.5 rounded-xl text-[11px] font-extrabold transition-colors ${
-                      trendingTab === 'youtube' ? 'text-red-400' : 'text-white/30 hover:text-red-400'
+                      trendingTab === 'youtube' ? 'text-red-400' : 'text-muted-foreground hover:text-red-400'
                     }`}
                   >
                     {trendingTab === 'youtube' && (
@@ -1811,7 +1814,7 @@ export default function RoomPage() {
                     onClick={() => setTrendingTab('instagram')}
                     title="Instagram Trending"
                     className={`relative flex items-center gap-1.5 px-2.5 py-1.5 rounded-xl text-[11px] font-extrabold transition-colors ${
-                      trendingTab === 'instagram' ? 'text-pink-400' : 'text-white/30 hover:text-pink-400'
+                      trendingTab === 'instagram' ? 'text-pink-400' : 'text-muted-foreground hover:text-pink-400'
                     }`}
                   >
                     {trendingTab === 'instagram' && (
@@ -1845,7 +1848,7 @@ export default function RoomPage() {
                   {trendingTab === 'instagram' && (
                     <button
                       onClick={manualRefreshInsta}
-                      className="p-1.5 rounded-lg bg-white/5 hover:bg-pink-500/10 text-white/30 hover:text-pink-400 transition-all border border-white/5"
+                      className="p-1.5 rounded-lg bg-white/5 hover:bg-pink-500/10 text-muted-foreground hover:text-pink-400 transition-all border border-white/5"
                       title="Next batch"
                     >
                       <RefreshCw className={`w-3 h-3 ${instaRefreshing ? 'animate-spin' : ''}`} />
@@ -1884,7 +1887,7 @@ export default function RoomPage() {
                         </div>
                         <div className="flex-1 min-w-0">
                           <p className="text-xs font-bold truncate text-white/85 group-hover:text-white transition-colors">{s.title}</p>
-                          <p className="text-[10px] text-white/35 truncate mt-0.5">{s.channel}</p>
+                          <p className="text-[10px] text-muted-foreground truncate mt-0.5">{s.channel}</p>
                         </div>
                         <span className="text-[9px] bg-red-500/10 text-red-400 px-1.5 py-0.5 rounded font-bold border border-red-500/15 shrink-0">{s.badge}</span>
                         <button
@@ -1902,7 +1905,7 @@ export default function RoomPage() {
                   /* Instagram Trending Horizontal Scroll */
                   <div className="min-h-[220px]">
                     {instaLoading ? (
-                      <div className="flex flex-col items-center justify-center h-full text-white/30 space-y-3 py-10">
+                      <div className="flex flex-col items-center justify-center h-full text-muted-foreground space-y-3 py-10">
                         <Loader2 className="w-6 h-6 animate-spin text-pink-400" />
                         <p className="text-[10px] font-bold tracking-widest uppercase">Fetching Trending Reels...</p>
                       </div>
@@ -2073,7 +2076,7 @@ export default function RoomPage() {
                     <div className="flex items-center justify-between px-4 py-3.5 border-b border-white/8">
                       <div>
                         <h3 className="font-extrabold text-sm text-white">🎧 Device Songs</h3>
-                        <p className="text-[10px] text-white/35 mt-0.5">Pick songs stored on your device</p>
+                        <p className="text-[10px] text-muted-foreground mt-0.5">Pick songs stored on your device</p>
                       </div>
                       <button onClick={() => { setShowAppPicker(false); setSelectedApp(null); }} className="p-1.5 rounded-lg bg-white/5 hover:bg-white/10 text-white/40">
                         <X className="w-4 h-4" />
@@ -2120,7 +2123,7 @@ export default function RoomPage() {
                             <ArrowLeft className="w-3.5 h-3.5" />
                           </button>
                           <span className="text-[11px] font-bold text-white/70">{MUSIC_APPS.find(a => a.id === selectedApp)?.emoji} {MUSIC_APPS.find(a => a.id === selectedApp)?.name}</span>
-                          <span className="ml-auto text-[9px] text-white/30">{addedSongs.size} added</span>
+                          <span className="ml-auto text-[9px] text-muted-foreground">{addedSongs.size} added</span>
                         </div>
                         <div className="divide-y divide-white/5 max-h-64 overflow-y-auto scrollbar-hide">
                           {appSongs.map((song) => (
@@ -2128,7 +2131,7 @@ export default function RoomPage() {
                               <img src={song.thumbnail} alt={song.title} className="w-10 h-7 rounded object-cover shrink-0" />
                               <div className="flex-1 min-w-0">
                                 <p className="text-xs font-semibold truncate text-white/90">{song.title}</p>
-                                <p className="text-[9px] text-white/35 truncate">{song.artist}</p>
+                                <p className="text-[9px] text-muted-foreground truncate">{song.artist}</p>
                               </div>
                               <button
                                 onClick={() => addAppSongToQueue(song)}
@@ -2426,7 +2429,7 @@ const SocialPanel = memo(function SocialPanel({
             >
               {/* Members listening header */}
               <div className="px-4 py-3 border-b border-white/6 shrink-0 bg-black/10">
-                <p className="text-[10px] text-white/30 uppercase tracking-[0.2em] font-extrabold mb-2 flex items-center gap-2">
+                <p className="text-[10px] text-muted-foreground uppercase tracking-[0.2em] font-extrabold mb-2 flex items-center gap-2">
                   <span className="w-4 h-px bg-gradient-to-r from-cyan-400/60 to-transparent inline-block" />
                   {members.length} {members.length === 1 ? 'Person' : 'People'} Vibe-Listening
                 </p>
@@ -2469,7 +2472,7 @@ const SocialPanel = memo(function SocialPanel({
                       <MessageCircle className="w-6 h-6 text-cyan-400/40" />
                     </div>
                     <div>
-                      <p className="text-xs font-bold text-white/30">Quiet in here</p>
+                      <p className="text-xs font-bold text-muted-foreground">Quiet in here</p>
                       <p className="text-[11px] text-white/20 mt-0.5">Send a message to start vibing! 👋</p>
                     </div>
                   </div>
@@ -2501,7 +2504,7 @@ const SocialPanel = memo(function SocialPanel({
 
                           <div className={`flex flex-col max-w-[75%] ${isMe ? 'items-end' : 'items-start'}`}>
                             {showName && (
-                              <span className="text-[9px] text-white/30 mb-0.5 pl-1 font-semibold">
+                              <span className="text-[9px] text-muted-foreground mb-0.5 pl-1 font-semibold">
                                 {msg.displayName}
                               </span>
                             )}
@@ -2638,7 +2641,7 @@ const SocialPanel = memo(function SocialPanel({
 
                     {/* Showing tracks list matching during matching stages */}
                     <div className="space-y-2">
-                      <p className="text-[10px] text-white/30 uppercase tracking-[0.2em] font-bold">Matched Playlist Items</p>
+                      <p className="text-[10px] text-muted-foreground uppercase tracking-[0.2em] font-bold">Matched Playlist Items</p>
                       <div className="space-y-1.5">
                         {[
                           { title: 'Arijit Singh - Tum Hi Ho', status: importProgress >= 40 ? 'matched' : 'pending' },
