@@ -1,34 +1,22 @@
-name: Keep SyncBeat awake
+name: Keep SyncBeat Alive (Render Ping)
 
-# Render's free tier spins the service down after ~15 minutes without traffic, and
-# the next visitor waits for a cold start. GitHub only fires `schedule` triggers
-# best-effort — this repo's logs show 3-5 hour gaps between runs — so each run
-# pings continuously for ~55 minutes instead of hitting once and exiting.
 on:
   schedule:
-    - cron: "*/15 * * * *"
-  workflow_dispatch:
+    # Ping every 5 minutes — keeps Render free tier from sleeping
+    - cron: '*/5 * * * *'
+  workflow_dispatch: # Allow manual trigger too
 
 jobs:
   ping:
     runs-on: ubuntu-latest
-    timeout-minutes: 58
-    concurrency:
-      group: keep-awake
-      cancel-in-progress: false
     steps:
-      - name: Ping the service every 30s for ~55 minutes
+      - name: Ping SyncBeat Server
         run: |
-          base=https://syncbeat-vaibhav.onrender.com
-          for i in $(seq 1 110); do
-            code=$(curl -s -o /dev/null -w '%{http_code}' --max-time 25 "$base/api/healthz") || code=000
-            # An external Postgres suspends its compute while no queries arrive, so the
-            # first sign-in after a quiet spell waits for that too. This route runs one
-            # cheap SELECT on `users` and only answers 200 when the database is reachable.
-            db=$(curl -s -o /dev/null -w '%{http_code}' --max-time 25 "$base/api/auth/username/warmup/available") || db=000
-            echo "attempt $i -> app $code, db $db"
-            sleep 30
-          done
-          # A cold service answers 503/timeout on the first hit; that wake-up is the
-          # point of this job, so a failure here is not worth an email.
-          exit 0
+          echo "Pinging SyncBeat at $(date)"
+          STATUS=$(curl -s -o /dev/null -w "%{http_code}" --max-time 30 https://syncbeat-vaibhav.onrender.com/api/healthz)
+          echo "HTTP Status: $STATUS"
+          if [ "$STATUS" = "200" ]; then
+            echo "✅ Server is UP!"
+          else
+            echo "⚠️ Server returned $STATUS — may be waking up"
+          fi
