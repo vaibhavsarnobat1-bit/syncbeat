@@ -257,20 +257,19 @@ export function YouTubePlayer({
             return;
           }
 
-          // Suppress local echo during remote command lockout window
-          if (Date.now() < remoteLockUntilRef.current) {
-            return;
-          }
-
           const currentTime = playerRef.current?.getCurrentTime?.() ?? 0;
 
           if (event.data === window.YT.PlayerState.PLAYING) {
             // Clear mobile autoplay block — song is now actually playing!
             setYtBlocked(false);
+            // If inside lock window, only update local state, don't broadcast
+            if (Date.now() < remoteLockUntilRef.current) {
+              lastReportedStateRef.current = 'play';
+              return;
+            }
             if (lastReportedStateRef.current !== 'play') {
               lastReportedStateRef.current = 'play';
-              // Only host or explicit user actions should broadcast play to the room
-              // Listeners recovering from a buffer must NEVER overwrite room time!
+              // Only host broadcasts play — listeners recovering from buffer must NOT overwrite room time
               if (isHost) {
                 onPlay(currentTime);
               }
@@ -280,9 +279,13 @@ export function YouTubePlayer({
             if (typeof document !== 'undefined' && document.hidden) {
               return;
             }
+            // ✅ PAUSE ALWAYS BROADCASTS if host — even if inside lock window!
+            // This ensures mobile tap-to-pause always works for the host.
             if (lastReportedStateRef.current !== 'pause') {
               lastReportedStateRef.current = 'pause';
               if (isHost) {
+                // Clear lock so this pause isn't suppressed
+                remoteLockUntilRef.current = 0;
                 onPause(currentTime);
               }
             }
@@ -327,7 +330,7 @@ export function YouTubePlayer({
 
     if (remoteState.action === 'pause') {
       // 1. Immediately cut audio & pause with 0ms delay on all devices
-      remoteLockUntilRef.current = Date.now() + 1200;
+      remoteLockUntilRef.current = Date.now() + 800;
       lastReportedStateRef.current = 'pause';
       try {
         playerRef.current.pauseVideo();
@@ -342,40 +345,42 @@ export function YouTubePlayer({
         }
       }
     } else if (remoteState.action === 'play') {
-      // 1. Calculate network latency compensation
-      remoteLockUntilRef.current = Date.now() + 1000;
+      // Listeners: ONLY call playVideo() — NO seeking on play event!
+      // Seeking causes mobile buffering loop. sync_tick will correct drift gradually.
+      remoteLockUntilRef.current = Date.now() + 800;
       lastReportedStateRef.current = 'play';
-      const latency = Math.max(0, (Date.now() - (remoteState.timestamp || Date.now())) / 1000);
-      const target = (remoteState.currentTime || 0) + (latency < 2 ? latency : 0);
-      const current = playerRef.current.getCurrentTime?.() ?? 0;
-
-      // Only seek if drift > 1.2s to prevent mobile buffering loops
-      if (Math.abs(current - target) > 1.2) {
-        try {
-          playerRef.current.seekTo(target, true);
-        } catch {}
+      // Host: seek if needed. Listeners: just play from wherever they are.
+      if (isHost) {
+        const latency = Math.max(0, (Date.now() - (remoteState.timestamp || Date.now())) / 1000);
+        const target = (remoteState.currentTime || 0) + (latency < 2 ? latency : 0);
+        const current = playerRef.current.getCurrentTime?.() ?? 0;
+        if (Math.abs(current - target) > 2.0) {
+          try {
+            playerRef.current.seekTo(target, true);
+          } catch {}
+        }
       }
       try {
         playerRef.current.playVideo();
       } catch {}
     } else if (remoteState.action === 'seek') {
-      remoteLockUntilRef.current = Date.now() + 1000;
+      remoteLockUntilRef.current = Date.now() + 800;
       try {
         playerRef.current.seekTo(remoteState.currentTime || 0, true);
       } catch {}
     } else if (remoteState.action === 'sync_tick') {
       // 🔄 CONTINUOUS HEARTBEAT AUTO-ALIGNMENT
-      // Only seek if drift is large (> 5.0s) so mobile YouTube NEVER stutters or resets
+      // Only seek if drift is large (> 8.0s) so mobile YouTube NEVER stutters
       if (isPlaying && state === window.YT.PlayerState.PLAYING) {
         const latency = Math.max(0, (Date.now() - (remoteState.timestamp || Date.now())) / 1000);
         const expected = remoteState.currentTime + (latency < 2 ? latency : 0);
         const current = playerRef.current.getCurrentTime?.() ?? 0;
         const drift = Math.abs(current - expected);
 
-        // Only correct if drift exceeds 5.0 seconds and throttle to once every 8 seconds
-        if (drift > 5.0 && Date.now() - lastSyncTickSeekRef.current > 8000) {
+        // Only correct if drift exceeds 8.0 seconds and throttle to once every 12 seconds
+        if (drift > 8.0 && Date.now() - lastSyncTickSeekRef.current > 12000) {
           lastSyncTickSeekRef.current = Date.now();
-          remoteLockUntilRef.current = Date.now() + 1500;
+          remoteLockUntilRef.current = Date.now() + 1000;
           try {
             playerRef.current.seekTo(expected, true);
           } catch {}
