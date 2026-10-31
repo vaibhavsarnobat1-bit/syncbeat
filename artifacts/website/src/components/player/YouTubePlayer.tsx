@@ -273,23 +273,14 @@ export function YouTubePlayer({
             }
             if (lastReportedStateRef.current !== 'play') {
               lastReportedStateRef.current = 'play';
-              if (isHost) {
-                onPlay(currentTime);
-              }
+              onPlay(currentTime);
             }
           } else if (event.data === window.YT.PlayerState.PAUSED) {
             // When user switches apps or minimizes browser, ignore
             if (typeof document !== 'undefined' && document.hidden) {
               return;
             }
-            // 🛡️ CRITICAL FIX: If room is supposed to be playing, mobile Chrome's internal
-            // pause/buffer hiccup must NEVER broadcast pause to the whole room!
-            if (isPlaying) {
-              try {
-                playerRef.current?.playVideo?.();
-              } catch {}
-              return;
-            }
+            // If inside lock window, echo suppression — don't re-broadcast
             if (Date.now() < remoteLockUntilRef.current) {
               lastReportedStateRef.current = 'pause';
               return;
@@ -319,7 +310,7 @@ export function YouTubePlayer({
     return () => {
       // Cleanup on unmount only
     };
-  }, [isApiReady, videoId, isPlaying]);
+  }, [isApiReady, videoId]);
 
   // Cleanup on unmount
   useEffect(() => {
