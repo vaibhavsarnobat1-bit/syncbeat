@@ -272,6 +272,19 @@ export function useWebSocket(roomId: string | undefined) {
   }, [roomId, user]);
 
   const send = useCallback((message: WsOutgoingMessage): boolean => {
+    // ⚡ OPTIMISTIC INSTANT UPDATE (0ms):
+    // Instantly reflect play/pause/seek locally so UI button flips without waiting for WebSocket round-trip
+    if (message.type === 'pause') {
+      setRoom((prev) => (prev ? { ...prev, isPlaying: false, currentTime: message.currentTime } : null));
+      setRemotePlayerState({ action: 'pause', currentTime: message.currentTime, timestamp: Date.now() });
+    } else if (message.type === 'play') {
+      setRoom((prev) => (prev ? { ...prev, isPlaying: true, currentTime: message.currentTime } : null));
+      setRemotePlayerState({ action: 'play', currentTime: message.currentTime, timestamp: Date.now() });
+    } else if (message.type === 'seek') {
+      setRoom((prev) => (prev ? { ...prev, currentTime: message.currentTime } : null));
+      setRemotePlayerState({ action: 'seek', currentTime: message.currentTime, timestamp: Date.now() });
+    }
+
     if (wsRef.current?.readyState === WebSocket.OPEN) {
       wsRef.current.send(JSON.stringify(message));
       return true;

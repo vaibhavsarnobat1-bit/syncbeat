@@ -63,26 +63,26 @@ function isHindi(q: string): boolean {
   return /[\u0900-\u097F]/.test(q);
 }
 
-// Build a smart search query
+// Build a smart search query (embed-safe: avoid forcing "official video" which triggers label 150 embed bans)
 function buildQuery(q: string): string {
   const lower = q.toLowerCase().trim();
 
   // Language queries → playlists
-  if (/^(hindi|hindi songs?|all hindi songs?)$/.test(lower)) return "best hindi hit songs 2024 2025 official music video";
-  if (/^(marathi|marathi songs?|all marathi songs?)$/.test(lower)) return "best marathi hit songs 2024 official music video";
-  if (/^(english|english songs?|pop songs?)$/.test(lower)) return "latest english pop hits 2024 2025 official music video";
-  if (/^(punjabi|punjabi songs?|all punjabi songs?)$/.test(lower)) return "latest punjabi hit songs 2024 2025 official music video";
-  if (/^(bhojpuri|bhojpuri songs?)$/.test(lower)) return "superhit bhojpuri songs 2024 official music video";
+  if (/^(hindi|hindi songs?|all hindi songs?)$/.test(lower)) return "best hindi hit songs 2024 2025 songs";
+  if (/^(marathi|marathi songs?|all marathi songs?)$/.test(lower)) return "best marathi hit songs 2024 songs";
+  if (/^(english|english songs?|pop songs?)$/.test(lower)) return "latest english pop hits 2024 2025 songs";
+  if (/^(punjabi|punjabi songs?|all punjabi songs?)$/.test(lower)) return "latest punjabi hit songs 2024 2025 songs";
+  if (/^(bhojpuri|bhojpuri songs?)$/.test(lower)) return "superhit bhojpuri songs 2024 songs";
 
   // Artist mapping: partial name or misspelling → canonical full name + songs
   for (const [key, fullName] of Object.entries(ARTIST_MAPPING)) {
     if (lower.includes(key)) {
-      return `${fullName} hit songs official video`;
+      return `${fullName} hit songs`;
     }
   }
 
   // Hindi Devanagari query
-  if (isHindi(q)) return `${q} latest song official video`;
+  if (isHindi(q)) return `${q} latest songs`;
 
   // Short query (1-3 words) without song keywords → treat as music search
   const keywords = ["song","lyrics","feat","ft.","remix","official","video","audio","full","cover","#"];
@@ -198,7 +198,7 @@ router.get("/", async (req, res) => {
 // ── GET /api/search/trending ───────────────────────────────────────────────
 router.get("/trending", async (_req, res) => {
   try {
-    const videos = await searchYT("trending bollywood single song 2025 official video", 12);
+    const videos = await searchYT("trending bollywood single hit songs 2025", 12);
     res.json({ results: videos });
   } catch {
     res.json({ results: [] });
@@ -207,23 +207,23 @@ router.get("/trending", async (_req, res) => {
 
 // ── GET /api/search/insta-trending ────────────────────────────────────────
 // Returns 4 batches of 4 songs — each batch from a different themed query
-// so songs are always fresh/available (no hardcoded unavailable IDs)
+// so songs are always fresh/available and embed-safe (no restricted VEVO videos)
 router.get("/insta-trending", async (_req, res) => {
   // Randomize a little bit so refreshing fetches different themes
-  // Using specific famous artists ensures we get single songs, not generic compilation videos
+  // Using specific famous artists ensures we get single songs with safe embedding
   const ALL_QUERIES = [
-    { query: "Ed Sheeran popular pop hit single song official video", badge: "🌍 Global" },
-    { query: "Arijit Singh latest romantic hit single song official video", badge: "🔥 #1 Reels" },
-    { query: "Justin Bieber pop hit single song official video", badge: "✨ Pop" },
-    { query: "Diljit Dosanjh latest hit single song official video", badge: "🎵 Hot" },
-    { query: "The Weeknd pop hit single song official video", badge: "🎧 Chill" },
-    { query: "Darshan Raval emotional hit single song official video", badge: "🥺 Feels" },
-    { query: "Dua Lipa dance pop hit single song official video", badge: "💃 Trend" },
-    { query: "Karan Aujla trending punjabi hit single song official video", badge: "📈 Viral" },
-    { query: "Alan Walker famous song official video", badge: "🔥 Trend" },
-    { query: "Selena Gomez pop hit song official video", badge: "❤️ Pop" },
-    { query: "Shreya Ghoshal beautiful melody single song official video", badge: "❤️ Love" },
-    { query: "Charlie Puth famous hit song official video", badge: "✨ Hits" },
+    { query: "Ed Sheeran popular pop hit songs", badge: "🌍 Global" },
+    { query: "Arijit Singh latest romantic hit songs lyrics", badge: "🔥 #1 Reels" },
+    { query: "Justin Bieber pop hit songs", badge: "✨ Pop" },
+    { query: "Diljit Dosanjh latest hit songs lyrics", badge: "🎵 Hot" },
+    { query: "The Weeknd pop hit songs", badge: "🎧 Chill" },
+    { query: "Darshan Raval emotional hit songs audio", badge: "🥺 Feels" },
+    { query: "Dua Lipa dance pop hit songs", badge: "💃 Trend" },
+    { query: "Karan Aujla trending punjabi hit songs", badge: "📈 Viral" },
+    { query: "Alan Walker famous electronic songs", badge: "🔥 Trend" },
+    { query: "Selena Gomez pop hit songs", badge: "❤️ Pop" },
+    { query: "Shreya Ghoshal beautiful melody songs", badge: "❤️ Love" },
+    { query: "Charlie Puth famous hit songs", badge: "✨ Hits" },
   ];
   // Shuffle and pick 4
   const BATCH_QUERIES = ALL_QUERIES.sort(() => 0.5 - Math.random()).slice(0, 4);
@@ -245,6 +245,39 @@ router.get("/insta-trending", async (_req, res) => {
     res.json({ batches });
   } catch {
     res.json({ batches: [] });
+  }
+});
+
+// ── GET /api/search/fallback?title=&exclude= ─────────────────────────────
+// Automatic Recovery: When YouTube triggers Error 150/101 (Embedding Restricted by Owner),
+// this automatically searches for a clean, playable audio or lyrical version!
+router.get("/fallback", async (req, res) => {
+  const rawTitle = String(req.query.title || "").trim();
+  const excludeId = String(req.query.exclude || "").trim();
+  if (!rawTitle) {
+    res.json({ results: [] });
+    return;
+  }
+
+  try {
+    // Clean up title: remove "(Official Video)", "[4K]", channel tags etc.
+    const cleanTitle = rawTitle
+      .replace(/\|.*$/g, "")
+      .replace(/\[.*?\]/g, "")
+      .replace(/\(.*?(official|video|4k|hd|music video|lyric).*?\)/gi, "")
+      .replace(/official\s+video/gi, "")
+      .replace(/music\s+video/gi, "")
+      .trim();
+
+    // Query for lyrical/audio versions which virtually NEVER have embed restrictions
+    const query = `${cleanTitle} audio lyrics`;
+    const videos = await searchYT(query, 8);
+    // Exclude the restricted videoId
+    const filtered = videos.filter((v) => v.videoId !== excludeId);
+    res.json({ results: filtered });
+  } catch (err) {
+    console.error("Fallback search error:", err);
+    res.json({ results: [] });
   }
 });
 

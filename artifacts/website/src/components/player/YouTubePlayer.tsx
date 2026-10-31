@@ -23,6 +23,8 @@ interface YouTubePlayerProps {
   onReady: () => void;
   onEnded?: () => void;
   onSkipNext?: () => void;
+  onFallback?: (failedTitle: string, failedVideoId: string) => void;
+  isRecovering?: boolean;
   remoteState: { action: 'play' | 'pause' | 'seek' | 'sync_tick'; currentTime: number; timestamp: number } | null;
   isHost: boolean;
   getTimeRef?: React.MutableRefObject<(() => number) | null>;
@@ -41,6 +43,8 @@ export function YouTubePlayer({
   onReady,
   onEnded,
   onSkipNext,
+  onFallback,
+  isRecovering = false,
   remoteState,
   getTimeRef,
   playerControlRef,
@@ -218,10 +222,16 @@ export function YouTubePlayer({
         onError: (event: any) => {
           console.warn('[YouTubePlayer] Error code:', event.data);
           setEmbedError(event.data);
-          // When YouTube restricts a video, stop playing state so room isn't stuck
-          try {
-            onPause(0);
-          } catch {}
+          // If embedding is restricted (150/101) or video unavailable (100/2), automatically recover to a playable version!
+          if ((event.data === 150 || event.data === 101 || event.data === 100 || event.data === 2) && onFallback && trackTitle) {
+            console.log('[YouTubePlayer] Error caught, triggering auto-recovery for:', trackTitle);
+            onFallback(trackTitle, videoId);
+          } else {
+            // When YouTube restricts a video and no fallback exists, stop playing state
+            try {
+              onPause(0);
+            } catch {}
+          }
         },
         onReady: (e: any) => {
           const iframe = e.target.getIframe();
@@ -346,15 +356,15 @@ export function YouTubePlayer({
 
     if (remoteState.action === 'pause') {
       // 1. Immediately cut audio & pause with 0ms delay on all devices
-      remoteLockUntilRef.current = Date.now() + 800;
+      remoteLockUntilRef.current = Date.now() + 1000;
       lastReportedStateRef.current = 'pause';
       try {
         playerRef.current.pauseVideo();
       } catch {}
-      // 2. Snap to exact remote paused timestamp frame if drift > 0.35s
+      // 2. Snap only if drift is significant (> 3.0s) to avoid black screen flickers or unwanted rebuffering
       if (typeof remoteState.currentTime === 'number') {
         const current = playerRef.current.getCurrentTime?.() ?? 0;
-        if (Math.abs(current - remoteState.currentTime) > 0.35) {
+        if (Math.abs(current - remoteState.currentTime) > 3.0) {
           try {
             playerRef.current.seekTo(remoteState.currentTime, true);
           } catch {}
@@ -474,8 +484,21 @@ export function YouTubePlayer({
         </div>
       )}
 
-      {/* ⚠️ Embed Error Overlay: shown when video can't be embedded */}
-      {embedError !== null && (
+      {/* 🔄 Auto-Recovery Indicator: Shown when searching for playable audio version */}
+      {isRecovering && (
+        <div className="absolute inset-0 z-40 bg-[#060708]/90 backdrop-blur-md flex flex-col items-center justify-center text-center p-4">
+          <div className="text-4xl mb-3 animate-spin">🔄</div>
+          <h3 className="text-white font-bold text-sm sm:text-base mb-1">
+            Switching to Playable Version...
+          </h3>
+          <p className="text-cyan-400 text-xs max-w-xs leading-relaxed">
+            {trackTitle ? `Matching playable version for "${trackTitle}"` : 'Restricted track detected, swapping audio...'}
+          </p>
+        </div>
+      )}
+
+      {/* ⚠️ Embed Error Overlay: shown only if recovery failed and video can't be embedded */}
+      {embedError !== null && !isRecovering && (
         <div className="absolute inset-0 z-30 bg-[#060708] flex flex-col items-center justify-center text-center p-4 sm:p-6">
           <div className="text-4xl mb-3 animate-bounce">🎧</div>
           <h3 className="text-white font-bold text-sm sm:text-base mb-1.5">

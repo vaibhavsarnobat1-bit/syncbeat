@@ -172,10 +172,10 @@ type InstaSong = { videoId: string; title: string; channel: string; thumbnail: s
 // Fallback shown only if the API call fails (known-good IDs)
 const INSTA_FALLBACK: InstaSong[][] = [
   [
-    { videoId: 'jGTQFMOmBEc', title: 'Kesariya', channel: 'Arijit Singh', thumbnail: 'https://img.youtube.com/vi/jGTQFMOmBEc/hqdefault.jpg', badge: '\uD83D\uDD25 #1 Reels' },
-    { videoId: '284Ov7ysnyo', title: 'Channa Mereya', channel: 'Arijit Singh', thumbnail: 'https://img.youtube.com/vi/284Ov7ysnyo/hqdefault.jpg', badge: '\u2764\uFE0F Trending' },
-    { videoId: 'JGwWNGJdvx8', title: 'Shape of You', channel: 'Ed Sheeran', thumbnail: 'https://img.youtube.com/vi/JGwWNGJdvx8/hqdefault.jpg', badge: '\uD83C\uDF0D Global' },
-    { videoId: 'OPf0YbXqDm0', title: 'Uptown Funk', channel: 'Bruno Mars', thumbnail: 'https://img.youtube.com/vi/OPf0YbXqDm0/hqdefault.jpg', badge: '\uD83D\uDD7A Dance' },
+    { videoId: 'W1S9AbHpWFY', title: 'Kesariya (Lyrics)', channel: 'Arijit Singh', thumbnail: 'https://img.youtube.com/vi/W1S9AbHpWFY/hqdefault.jpg', badge: '🔥 #1 Reels' },
+    { videoId: '284Ov7ysnyo', title: 'Channa Mereya', channel: 'Arijit Singh', thumbnail: 'https://img.youtube.com/vi/284Ov7ysnyo/hqdefault.jpg', badge: '❤️ Trending' },
+    { videoId: 'JGwWNGJdvx8', title: 'Shape of You', channel: 'Ed Sheeran', thumbnail: 'https://img.youtube.com/vi/JGwWNGJdvx8/hqdefault.jpg', badge: '🌍 Global' },
+    { videoId: 'OPf0YbXqDm0', title: 'Uptown Funk', channel: 'Bruno Mars', thumbnail: 'https://img.youtube.com/vi/OPf0YbXqDm0/hqdefault.jpg', badge: '🕺 Dance' },
   ],
 ];
 
@@ -795,6 +795,41 @@ export default function RoomPage() {
   const handleQueueSkip = () => send({ type: 'queue_skip' });
   const handleQueueRemove = (videoId: string) => send({ type: 'queue_remove', videoId });
   const handleReaction = (emoji: string) => send({ type: 'reaction', emoji });
+
+  // 🔄 Automatic Error 150/101 Recovery Engine:
+  // If YouTube blocks embedding of an official video (e.g. Sony Music / VEVO),
+  // this automatically finds and hot-swaps to the playable lyrical/audio version!
+  const [isFindingFallback, setIsFindingFallback] = useState(false);
+  const fallbackAttemptsRef = useRef<Set<string>>(new Set());
+
+  const handleAutoFallback = useCallback(async (failedTitle: string, failedVideoId: string) => {
+    if (!failedTitle) return;
+    if (fallbackAttemptsRef.current.has(failedVideoId)) return;
+    fallbackAttemptsRef.current.add(failedVideoId);
+
+    setIsFindingFallback(true);
+    try {
+      const res = await fetch(`/api/search/fallback?title=${encodeURIComponent(failedTitle)}&exclude=${encodeURIComponent(failedVideoId)}`);
+      const data = await res.json();
+      if (data.results && data.results.length > 0) {
+        const replacement = data.results[0];
+        console.log('[Fallback] Auto-recovering with playable version:', replacement.title);
+        send({
+          type: 'track_change',
+          videoId: replacement.videoId,
+          title: replacement.title,
+          thumbnail: replacement.thumbnail,
+          duration: replacement.duration,
+        });
+      } else {
+        console.warn('[Fallback] No alternative versions found for:', failedTitle);
+      }
+    } catch (err) {
+      console.error('[Fallback] Auto-recovery request failed:', err);
+    } finally {
+      setIsFindingFallback(false);
+    }
+  }, [send]);
 
   const handleTogglePlayback = () => {
     if (!activeRoom?.currentTrack) return;
@@ -1626,6 +1661,8 @@ export default function RoomPage() {
                         }
                       }}
                       onSkipNext={() => handleQueueSkip()}
+                      onFallback={handleAutoFallback}
+                      isRecovering={isFindingFallback}
                       onReady={() => {}}
                       getTimeRef={playerGetTimeRef}
                       playerControlRef={playerControlRef}
