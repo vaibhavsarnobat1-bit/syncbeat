@@ -236,17 +236,17 @@ export function YouTubePlayer({
           if (isPlaying) {
             try {
               e.target.playVideo();
-              // Poll after 2.5s: if still unstarted/cued, autoplay was blocked by browser
+              // Mobile Autoplay Policy: if not in PLAYING state after 2s, mobile browser blocked it
               setTimeout(() => {
                 try {
                   const st = e.target.getPlayerState?.();
-                  // -1=unstarted, 5=video cued — means mobile blocked autoplay
-                  if (st === -1 || st === 5) {
+                  // 1 = PLAYING. If anything else (-1 unstarted, 2 paused, 3 buffering, 5 cued), prompt tap!
+                  if (st !== 1) {
                     setYtBlocked(true);
                     onAutoplayBlocked?.();
                   }
                 } catch {}
-              }, 2500);
+              }, 2000);
             } catch {
               setYtBlocked(true);
               onAutoplayBlocked?.();
@@ -273,17 +273,23 @@ export function YouTubePlayer({
             }
             if (lastReportedStateRef.current !== 'play') {
               lastReportedStateRef.current = 'play';
-              // Only host broadcasts play — listeners recovering from buffer must NOT overwrite room time
               if (isHost) {
                 onPlay(currentTime);
               }
             }
           } else if (event.data === window.YT.PlayerState.PAUSED) {
-            // When user switches apps or minimizes browser, document.hidden becomes true.
+            // When user switches apps or minimizes browser, ignore
             if (typeof document !== 'undefined' && document.hidden) {
               return;
             }
-            // Allow any member/device to pause the room!
+            // 🛡️ CRITICAL FIX: If room is supposed to be playing, mobile Chrome's internal
+            // pause/buffer hiccup must NEVER broadcast pause to the whole room!
+            if (isPlaying) {
+              try {
+                playerRef.current?.playVideo?.();
+              } catch {}
+              return;
+            }
             if (Date.now() < remoteLockUntilRef.current) {
               lastReportedStateRef.current = 'pause';
               return;
@@ -292,6 +298,18 @@ export function YouTubePlayer({
               lastReportedStateRef.current = 'pause';
               remoteLockUntilRef.current = 0;
               onPause(currentTime);
+            }
+          } else if (event.data === window.YT.PlayerState.BUFFERING) {
+            // If buffering for more than 3 seconds on mobile, show the tap button to help kickstart
+            const isMobile = typeof navigator !== 'undefined' && /android|iphone|ipad|ipod/i.test(navigator.userAgent);
+            if (isMobile && isPlaying) {
+              setTimeout(() => {
+                try {
+                  if (playerRef.current?.getPlayerState?.() === window.YT.PlayerState.BUFFERING) {
+                    setYtBlocked(true);
+                  }
+                } catch {}
+              }, 3000);
             }
           }
         },
@@ -445,17 +463,18 @@ export function YouTubePlayer({
             className="px-6 py-3 rounded-full bg-gradient-to-r from-cyan-500 to-blue-600 text-black font-extrabold text-sm shadow-lg shadow-cyan-500/40 active:scale-95 animate-pulse cursor-pointer"
             onClick={() => {
               setYtBlocked(false);
-              remoteLockUntilRef.current = Date.now() + 1500;
+              remoteLockUntilRef.current = Date.now() + 2000;
               lastReportedStateRef.current = 'play';
               try {
+                // Play first directly within user touch event
+                playerRef.current?.playVideo?.();
                 const cur = playerRef.current?.getCurrentTime?.() ?? 0;
                 const syncTarget = remoteState?.currentTime
                   ? remoteState.currentTime + Math.max(0, (Date.now() - (remoteState.timestamp || Date.now())) / 1000)
                   : cur;
-                if (Math.abs(cur - syncTarget) > 1) {
+                if (syncTarget > 5 && Math.abs(cur - syncTarget) > 10) {
                   playerRef.current?.seekTo?.(syncTarget, true);
                 }
-                playerRef.current?.playVideo?.();
               } catch {}
             }}
           >
