@@ -352,21 +352,10 @@ export function YouTubePlayer({
         }
       }
     } else if (remoteState.action === 'play') {
-      // Listeners: ONLY call playVideo() — NO seeking on play event!
-      // Seeking causes mobile buffering loop. sync_tick will correct drift gradually.
+      // ⚡ Mobile-Safe Play: NEVER seek on play event for mobile or listeners!
+      // Seeking on play destroys mobile buffer and creates endless loading circles.
       remoteLockUntilRef.current = Date.now() + 800;
       lastReportedStateRef.current = 'play';
-      // Host: seek if needed. Listeners: just play from wherever they are.
-      if (isHost) {
-        const latency = Math.max(0, (Date.now() - (remoteState.timestamp || Date.now())) / 1000);
-        const target = (remoteState.currentTime || 0) + (latency < 2 ? latency : 0);
-        const current = playerRef.current.getCurrentTime?.() ?? 0;
-        if (Math.abs(current - target) > 2.0) {
-          try {
-            playerRef.current.seekTo(target, true);
-          } catch {}
-        }
-      }
       try {
         playerRef.current.playVideo();
       } catch {}
@@ -377,17 +366,21 @@ export function YouTubePlayer({
       } catch {}
     } else if (remoteState.action === 'sync_tick') {
       // 🔄 CONTINUOUS HEARTBEAT AUTO-ALIGNMENT
-      // Only seek if drift is large (> 8.0s) so mobile YouTube NEVER stutters
+      // On mobile: allow 25s drift so mobile 4G NEVER enters an endless buffering loop!
+      const isMobile = typeof navigator !== 'undefined' && /android|iphone|ipad|ipod/i.test(navigator.userAgent);
+      const minDriftThreshold = isMobile ? 25.0 : 8.0;
+      const minThrottleTime = isMobile ? 25000 : 12000;
+
+      // NEVER seek while player is currently BUFFERING (state 3) — that causes permanent hang!
       if (isPlaying && state === window.YT.PlayerState.PLAYING) {
         const latency = Math.max(0, (Date.now() - (remoteState.timestamp || Date.now())) / 1000);
         const expected = remoteState.currentTime + (latency < 2 ? latency : 0);
         const current = playerRef.current.getCurrentTime?.() ?? 0;
         const drift = Math.abs(current - expected);
 
-        // Only correct if drift exceeds 8.0 seconds and throttle to once every 12 seconds
-        if (drift > 8.0 && Date.now() - lastSyncTickSeekRef.current > 12000) {
+        if (drift > minDriftThreshold && Date.now() - lastSyncTickSeekRef.current > minThrottleTime) {
           lastSyncTickSeekRef.current = Date.now();
-          remoteLockUntilRef.current = Date.now() + 1000;
+          remoteLockUntilRef.current = Date.now() + 1500;
           try {
             playerRef.current.seekTo(expected, true);
           } catch {}
@@ -395,6 +388,40 @@ export function YouTubePlayer({
       }
     }
   }, [remoteState, isPlaying]);
+
+  // 🛡️ Mobile Buffer Watchdog: If player is stuck in BUFFERING (state 3) for > 3.5s, kickstart it!
+  useEffect(() => {
+    let buffTimer: ReturnType<typeof setTimeout> | null = null;
+    const interval = setInterval(() => {
+      try {
+        if (!playerRef.current || typeof playerRef.current.getPlayerState !== 'function') return;
+        const st = playerRef.current.getPlayerState();
+        if (isPlaying && st === window.YT.PlayerState.BUFFERING) {
+          if (!buffTimer) {
+            buffTimer = setTimeout(() => {
+              try {
+                if (isPlaying && playerRef.current?.getPlayerState?.() === window.YT.PlayerState.BUFFERING) {
+                  console.log('[YouTubePlayer] Kickstarting stalled buffer...');
+                  playerRef.current.playVideo();
+                }
+              } catch {}
+              buffTimer = null;
+            }, 3500);
+          }
+        } else {
+          if (buffTimer) {
+            clearTimeout(buffTimer);
+            buffTimer = null;
+          }
+        }
+      } catch {}
+    }, 1000);
+
+    return () => {
+      clearInterval(interval);
+      if (buffTimer) clearTimeout(buffTimer);
+    };
+  }, [isPlaying]);
 
   return (
     <div ref={containerRef} className="relative w-full h-full overflow-hidden bg-black group">
@@ -482,10 +509,10 @@ export function YouTubePlayer({
         </div>
       )}
 
-      {/* Top Bar Click Shield: Blocks YouTube title & channel link redirects */}
+      {/* Top Bar Click Shield: Blocks YouTube title & channel link redirects (Desktop only) */}
       {!embedError && (
         <div
-          className="absolute top-0 left-0 right-16 h-14 z-20 pointer-events-auto bg-transparent"
+          className="hidden sm:block absolute top-0 left-0 right-16 h-14 z-20 pointer-events-auto bg-transparent"
           onClick={(e) => {
             e.preventDefault();
             e.stopPropagation();
@@ -494,10 +521,10 @@ export function YouTubePlayer({
         />
       )}
 
-      {/* Bottom-Right YouTube Logo & 'More Videos' Click Shield (Blocks popup & YouTube link) */}
+      {/* Bottom-Right YouTube Logo & 'More Videos' Click Shield (Desktop only) */}
       {!embedError && (
         <div
-          className="absolute bottom-0 right-0 w-80 h-16 z-20 pointer-events-auto bg-transparent cursor-default"
+          className="hidden sm:block absolute bottom-0 right-0 w-80 h-16 z-20 pointer-events-auto bg-transparent cursor-default"
           onClick={(e) => {
             e.preventDefault();
             e.stopPropagation();
