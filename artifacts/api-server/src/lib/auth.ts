@@ -581,10 +581,9 @@ export async function sendVerificationForUser(userId: string): Promise<{ ok: boo
   if (!email) return { ok: false, email: null, error: "No email on this account" };
   const sent = await sendMail(verificationEmail(email, code));
   if (!sent) return { ok: false, email, error: "Failed to send verification email" };
-  // Always expose the code on the UI as well, so the user can verify even if
-  // the SMTP email is delayed or blocked by a spam filter. The email is the
-  // primary channel; this is a convenience fallback copy.
-  return { ok: true, email, devCode: code };
+  // Only expose devCode fallback when real SMTP is NOT configured
+  const devCode = isSmtpConfigured() ? undefined : code;
+  return { ok: true, email, devCode };
 }
 
 export async function verifyOtp(emailRaw: string, code: string): Promise<"ok" | "invalid" | "expired"> {
