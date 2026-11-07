@@ -8,6 +8,11 @@ import {
   registerUser,
   requireAuth,
   revokeSession,
+  sendVerificationForUser,
+  verifyOtp,
+  findUserIdByEmail,
+  createPasswordReset,
+  resetPassword,
   upsertGoogleUser,
   validCredentials,
   type AuthedRequest,
@@ -102,7 +107,22 @@ router.post("/register", async (req: Request, res: Response) => {
     return;
   }
   try {
-    const user = await registerUser(username, password, req.body?.displayName ? String(req.body.displayName) : undefined);
+    const user = await registerUser(username, password, req.body?.displayName ? String(req.body.displayName) : undefined, req.body?.email);
+    // If an email was provided, the account must be verified before signing in.
+    if (user.email && !user.emailVerified) {
+      const sent = await sendVerificationForUser(user.id);
+      res.status(201).json({
+        user: {
+          id: user.id,
+          username: user.username,
+          email: user.email,
+          emailVerified: false,
+        },
+        needsVerification: true,
+        devCode: sent.devCode, // dev mode only (no SMTP)
+      });
+      return;
+    }
     const payload = await issueToken(user.id);
     if (!payload) {
       res.status(500).json({ error: "Could not start your session" });
@@ -111,7 +131,8 @@ router.post("/register", async (req: Request, res: Response) => {
     res.status(201).json({ user: payload });
   } catch (err: unknown) {
     const msg = err instanceof Error ? err.message : "Sign up failed";
-    res.status(msg.includes("taken") ? 409 : 500).json({ error: msg });
+    const code = msg.includes("taken") || msg.includes("already registered") ? 409 : msg.includes("valid email") ? 400 : 500;
+    res.status(code).json({ error: msg });
   }
 });
 
@@ -125,6 +146,10 @@ router.post("/login", async (req: Request, res: Response) => {
   const result = await loginUser(username, password);
   if (result === "banned") {
     res.status(403).json({ error: "This account has been suspended." });
+    return;
+  }
+  if (result === "unverified") {
+    res.status(403).json({ error: "Please verify your email before signing in", needsVerification: true });
     return;
   }
   if (typeof result === "string") {
@@ -200,6 +225,83 @@ router.post("/google", async (req: Request, res: Response) => {
     return;
   }
   res.json({ user: session });
+});
+
+router.post("/verify-email-otp", async (req: Request, res: Response) => {
+  const email = String(req.body?.email ?? "").trim().toLowerCase();
+  const otp = String(req.body?.otp ?? "").trim();
+  if (!email || !otp) {
+    res.status(400).json({ error: "Email and verification code are required" });
+    return;
+  }
+  const status = await verifyOtp(email, otp);
+  if (status === "ok") {
+    res.json({ ok: true });
+    return;
+  }
+  if (status === "expired") {
+    res.status(410).json({ error: "This verification code has expired. Request a new one." });
+    return;
+  }
+  res.status(400).json({ error: "Incorrect verification code." });
+});
+
+router.post("/resend-verification", async (req: Request, res: Response) => {
+  const email = String(req.body?.email ?? "").trim().toLowerCase();
+  if (!email) {
+    res.status(400).json({ error: "Email is required" });
+    return;
+  }
+  if (throttled(`verify:${req.ip}`, 5, 15 * 60 * 1000)) {
+    res.status(429).json({ error: "Too many attempts. Try again in a few minutes." });
+    return;
+  }
+  const userId = await findUserIdByEmail(email);
+  if (!userId) {
+    // Generic success — do not reveal whether the address is registered.
+    res.json({ ok: true });
+    return;
+  }
+  const sent = await sendVerificationForUser(userId);
+  res.json({ ok: true, devCode: sent.devCode }); // dev mode only
+});
+
+router.post("/forgot-password", async (req: Request, res: Response) => {
+  const identifier = String(req.body?.identifier ?? req.body?.email ?? "").trim();
+  if (!identifier) {
+    res.status(400).json({ error: "Enter your email or username" });
+    return;
+  }
+  if (throttled(`forgot:${req.ip}`, 5, 15 * 60 * 1000)) {
+    res.status(429).json({ error: "Too many attempts. Try again in a few minutes." });
+    return;
+  }
+  await createPasswordReset(identifier);
+  // Always return the same message so attackers cannot tell if an account exists.
+  res.json({ ok: true });
+});
+
+router.post("/reset-password", async (req: Request, res: Response) => {
+  const token = String(req.body?.token ?? "");
+  const password = String(req.body?.password ?? "");
+  if (!token || !password) {
+    res.status(400).json({ error: "Token and new password are required" });
+    return;
+  }
+  const status = await resetPassword(token, password);
+  if (status === "ok") {
+    res.json({ ok: true });
+    return;
+  }
+  if (status === "expired") {
+    res.status(410).json({ error: "This reset link has expired. Request a new one." });
+    return;
+  }
+  if (status === "weak") {
+    res.status(400).json({ error: "Password must be at least 8 characters with a letter and a number" });
+    return;
+  }
+  res.status(400).json({ error: "This reset link is invalid." });
 });
 
 export default router;

@@ -9,6 +9,7 @@ import { refreshSession } from "@/lib/authApi";
 
 import Home from "@/pages/Home";
 import Login from "@/pages/Login";
+import { VerifyPage, ResetPage } from "@/pages/AuthActions";
 import Lobby from "@/pages/Lobby";
 import Room from "@/pages/Room";
 import Admin from "@/pages/Admin";
@@ -42,6 +43,8 @@ function Router() {
       <Route path="/" component={Home} />
       <Route path="/download" component={DownloadApp} />
       <Route path="/login" component={Login} />
+      <Route path="/verify" component={VerifyPage} />
+      <Route path="/reset" component={ResetPage} />
       <Route path="/lobby">
         <RequireAuth><Lobby /></RequireAuth>
       </Route>

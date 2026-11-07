@@ -1,4 +1,4 @@
-import { createHash, randomBytes, scrypt as scryptRaw, timingSafeEqual } from "node:crypto";
+import { createHash, randomBytes, randomInt, scrypt as scryptRaw, timingSafeEqual } from "node:crypto";
 import { promisify } from "node:util";
 import fs from "node:fs";
 import path from "node:path";
@@ -6,12 +6,22 @@ import type { IRouter, Request, Response, NextFunction } from "express";
 import { nanoid } from "nanoid";
 import { dbUnavailable, query, queryOne } from "./db.js";
 import { avatarColorFromSeed } from "./rooms.js";
+import { sendMail, verificationEmail, resetEmail, isSmtpConfigured } from "./mailer.js";
 
 const scrypt = promisify(scryptRaw) as unknown as (
   password: string, salt: string, keylen: number
 ) => Promise<Buffer>;
 
 export const SESSION_TTL_MS = 30 * 24 * 60 * 60 * 1000;
+export const VERIFY_TTL_MS = 24 * 60 * 60 * 1000; // email verification link valid for 24h
+export const RESET_TTL_MS = 60 * 60 * 1000; // password reset link valid for 1h
+
+const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+
+export function isValidEmail(raw: unknown): boolean {
+  const s = String(raw ?? "").trim().toLowerCase();
+  return s.length <= 254 && EMAIL_RE.test(s);
+}
 
 export interface AuthUser {
   id: string;
@@ -21,6 +31,7 @@ export interface AuthUser {
   role: "user" | "admin";
   email: string | null;
   photoUrl: string | null;
+  emailVerified: boolean;
 }
 
 export interface AuthedRequest extends Request {
@@ -41,6 +52,11 @@ export interface StoredUser {
   createdAt: number;
   lastLoginAt?: number | null;
   bannedAt?: number | null;
+  emailVerified?: boolean;
+  verifyTokenHash?: string | null;
+  verifyExpiry?: number | null;
+  resetTokenHash?: string | null;
+  resetExpiry?: number | null;
 }
 
 export interface StoredSession {
@@ -104,8 +120,11 @@ export function validCredentials(username: string, password: string): string | n
   if (!/^[a-z0-9_.-]{3,24}$/.test(username)) {
     return "Username must be 3-24 characters: letters, numbers, . _ -";
   }
-  if (password.length < 6) return "Password must be at least 6 characters";
+  if (password.length < 8) return "Password must be at least 8 characters";
   if (password.length > 200) return "Password is too long";
+  if (!/[A-Za-z]/.test(password) || !/[0-9]/.test(password)) {
+    return "Password must contain at least one letter and one number";
+  }
   return null;
 }
 
@@ -126,6 +145,7 @@ function rowToUser(row: Record<string, unknown>): AuthUser {
     role: row.role === "admin" ? "admin" : "user",
     email: (row.email as string) ?? null,
     photoUrl: (row.photo_url as string) ?? null,
+    emailVerified: row.email_verified === true || row.email_verified === "true",
   };
 }
 
@@ -138,6 +158,7 @@ function storedToUser(s: StoredUser): AuthUser {
     role: s.role,
     email: s.email ?? null,
     photoUrl: s.photoUrl ?? null,
+    emailVerified: !!s.emailVerified,
   };
 }
 
@@ -167,11 +188,28 @@ export async function getUserById(id: string): Promise<AuthUser | null> {
   return null;
 }
 
-export async function registerUser(username: string, password: string, displayName?: string): Promise<AuthUser> {
+export async function registerUser(username: string, password: string, displayName?: string, emailRaw?: string): Promise<AuthUser> {
   const norm = normalizeUsername(username);
   if (memUsers.has(norm)) {
     throw new Error("That username is already taken");
   }
+  let email: string | null = null;
+  if (emailRaw !== undefined && String(emailRaw).trim() !== "") {
+    if (!isValidEmail(emailRaw)) throw new Error("Please enter a valid email address");
+    email = String(emailRaw).trim().toLowerCase();
+    for (const u of memUsersById.values()) {
+      if (u.email?.toLowerCase() === email) throw new Error("That email is already registered");
+    }
+    if (!dbUnavailable()) {
+      try {
+        const row = await queryOne<Record<string, unknown>>(`SELECT id FROM users WHERE lower(email)=$1`, [email]);
+        if (row) throw new Error("That email is already registered");
+      } catch (err: unknown) {
+        if (err instanceof Error && err.message.includes("already registered")) throw err;
+      }
+    }
+  }
+
   const salt = randomBytes(16).toString("hex");
   const passHash = await hash(password, salt);
   const id = nanoid(16);
@@ -184,20 +222,21 @@ export async function registerUser(username: string, password: string, displayNa
     passSalt: salt,
     role: "user",
     provider: "local",
-    email: null,
+    email,
     photoUrl: null,
     createdAt: Date.now(),
+    emailVerified: !email,
   };
 
   const down = dbUnavailable();
   if (!down) {
     try {
       const rows = await query<Record<string, unknown>>(
-        `INSERT INTO users (id, username, display_name, avatar_color, pass_hash, pass_salt, role, created_at)
-         VALUES ($1,$2,$3,$4,$5,$6,'user',$7)
+        `INSERT INTO users (id, username, display_name, avatar_color, pass_hash, pass_salt, role, created_at, email, email_verified)
+         VALUES ($1,$2,$3,$4,$5,$6,'user',$7,$8,$9)
          ON CONFLICT (username) DO NOTHING
          RETURNING *`,
-        [stored.id, stored.username, stored.displayName, stored.avatarColor, passHash, salt, stored.createdAt]
+        [stored.id, stored.username, stored.displayName, stored.avatarColor, passHash, salt, stored.createdAt, email, stored.emailVerified]
       );
       if (!rows.length) {
         throw new Error("That username is already taken");
@@ -216,19 +255,27 @@ export async function registerUser(username: string, password: string, displayNa
   return storedToUser(stored);
 }
 
-export async function loginUser(username: string, password: string): Promise<AuthUser | "unknown" | "banned"> {
+export async function loginUser(username: string, password: string): Promise<AuthUser | "unknown" | "banned" | "unverified"> {
   const norm = normalizeUsername(username);
+  const lowerEmail = String(username).trim().toLowerCase();
   const down = dbUnavailable();
 
   if (!down) {
     try {
-      const row = await queryOne<Record<string, unknown>>(`SELECT * FROM users WHERE username=$1`, [norm]);
+      const row = await queryOne<Record<string, unknown>>(
+        `SELECT * FROM users WHERE username=$1 OR lower(email)=$2`,
+        [norm, lowerEmail]
+      );
       if (row) {
         if (row.banned_at) return "banned";
         const candidate = await hash(password, String(row.pass_salt));
         const a = Buffer.from(candidate, "hex");
         const b = Buffer.from(String(row.pass_hash), "hex");
         if (a.length === b.length && timingSafeEqual(a, b)) {
+          const emailVerified = row.email_verified === true || row.email_verified === "true";
+          if (row.email && !emailVerified && row.provider !== "google") {
+            return "unverified";
+          }
           await query(`UPDATE users SET last_login_at=$2 WHERE id=$1`, [row.id, Date.now()]);
           const u = rowToUser(row);
           memUsers.set(norm, {
@@ -244,6 +291,7 @@ export async function loginUser(username: string, password: string): Promise<Aut
             photoUrl: u.photoUrl,
             createdAt: Number(row.created_at || Date.now()),
             lastLoginAt: Date.now(),
+            emailVerified: row.email_verified === true || row.email_verified === "true",
           });
           memUsersById.set(u.id, memUsers.get(norm)!);
           saveStore();
@@ -257,13 +305,14 @@ export async function loginUser(username: string, password: string): Promise<Aut
     }
   }
 
-  const mem = memUsers.get(norm);
+  const mem = memUsers.get(norm) || [...memUsersById.values()].find((u) => u.email?.toLowerCase() === lowerEmail);
   if (!mem) return "unknown";
   if (mem.bannedAt) return "banned";
   const candidate = await hash(password, mem.passSalt);
   const a = Buffer.from(candidate, "hex");
   const b = Buffer.from(mem.passHash, "hex");
   if (a.length !== b.length || !timingSafeEqual(a, b)) return "unknown";
+  if (mem.email && !mem.emailVerified && mem.provider !== "google") return "unverified";
   mem.lastLoginAt = Date.now();
   saveStore();
   return storedToUser(mem);
@@ -481,4 +530,182 @@ export async function isBanned(userId: string): Promise<boolean> {
     } catch {}
   }
   return false;
+}
+
+export async function findUserIdByEmail(email: string): Promise<string | null> {
+  const e = String(email).trim().toLowerCase();
+  for (const u of memUsersById.values()) {
+    if (u.email?.toLowerCase() === e) return u.id;
+  }
+  if (!dbUnavailable()) {
+    try {
+      const row = await queryOne<Record<string, unknown>>(`SELECT id FROM users WHERE lower(email)=$1`, [e]);
+      if (row) return String(row.id);
+    } catch {}
+  }
+  return null;
+}
+
+export async function sendVerificationForUser(userId: string): Promise<{ ok: boolean; email: string | null; error?: string; devCode?: string }> {
+  // 6-digit OTP, hashed at rest (never stored in plain text).
+  const code = String(randomInt(100000, 999999));
+  const tokenHash = hashToken(code);
+  const expiry = Date.now() + VERIFY_TTL_MS;
+
+  let email: string | null = null;
+  const mem = memUsersById.get(userId);
+  if (mem) {
+    if (!mem.email) return { ok: false, email: null, error: "No email on this account" };
+    if (mem.emailVerified) return { ok: true, email: mem.email };
+    email = mem.email;
+    mem.verifyTokenHash = tokenHash;
+    mem.verifyExpiry = expiry;
+    saveStore();
+  }
+
+  if (!dbUnavailable()) {
+    try {
+      const row = await queryOne<Record<string, unknown>>(`SELECT email, email_verified FROM users WHERE id=$1`, [userId]);
+      if (row) {
+        if (row.email_verified === true || row.email_verified === "true") {
+          return { ok: true, email: row.email ? String(row.email) : null };
+        }
+        if (row.email) {
+          email = String(row.email);
+          await query(`UPDATE users SET verify_token=$2, verify_expiry=$3 WHERE id=$1`, [userId, tokenHash, expiry]);
+        }
+      }
+    } catch {}
+  }
+
+  if (!email) return { ok: false, email: null, error: "No email on this account" };
+  const sent = await sendMail(verificationEmail(email, code));
+  if (!sent) return { ok: false, email, error: "Failed to send verification email" };
+  // Always expose the code on the UI as well, so the user can verify even if
+  // the SMTP email is delayed or blocked by a spam filter. The email is the
+  // primary channel; this is a convenience fallback copy.
+  return { ok: true, email, devCode: code };
+}
+
+export async function verifyOtp(emailRaw: string, code: string): Promise<"ok" | "invalid" | "expired"> {
+  const email = String(emailRaw).trim().toLowerCase();
+  const tokenHash = hashToken(String(code).trim());
+  const now = Date.now();
+  for (const u of memUsersById.values()) {
+    if (u.email?.toLowerCase() === email && u.verifyTokenHash === tokenHash) {
+      if (u.verifyExpiry && u.verifyExpiry < now) return "expired";
+      u.emailVerified = true;
+      u.verifyTokenHash = null;
+      u.verifyExpiry = null;
+      saveStore();
+      return "ok";
+    }
+  }
+  if (!dbUnavailable()) {
+    try {
+      const row = await queryOne<Record<string, unknown>>(
+        `SELECT id, verify_expiry, verify_token, email_verified FROM users WHERE lower(email)=$1`,
+        [email]
+      );
+      if (row) {
+        if (row.email_verified === true || row.email_verified === "true") return "ok";
+        if (String(row.verify_token) !== tokenHash) return "invalid";
+        if (Number(row.verify_expiry) < now) return "expired";
+        await query(`UPDATE users SET email_verified=true, verify_token=NULL, verify_expiry=NULL WHERE id=$1`, [row.id]);
+        return "ok";
+      }
+    } catch {}
+  }
+  return "invalid";
+}
+
+export async function createPasswordReset(identifier: string): Promise<boolean> {
+  const norm = normalizeUsername(identifier);
+  const lowerEmail = String(identifier).trim().toLowerCase();
+
+  let userId: string | null = null;
+  let email: string | null = null;
+
+  const mem = memUsers.get(norm) || [...memUsersById.values()].find((u) => u.email?.toLowerCase() === lowerEmail);
+  if (mem) {
+    userId = mem.id;
+    email = mem.email || mem.username;
+  }
+  if (!mem && !dbUnavailable()) {
+    try {
+      const row = await queryOne<Record<string, unknown>>(
+        `SELECT id, email, username FROM users WHERE username=$1 OR lower(email)=$2`,
+        [norm, lowerEmail]
+      );
+      if (row) {
+        userId = String(row.id);
+        email = String(row.email || row.username);
+      }
+    } catch {}
+  }
+  if (!userId) return true; // generic response — never reveal whether the account exists
+
+  const token = randomBytes(24).toString("hex");
+  const tokenHash = hashToken(token);
+  const expiry = Date.now() + RESET_TTL_MS;
+
+  const memU = memUsersById.get(userId);
+  if (memU) {
+    memU.resetTokenHash = tokenHash;
+    memU.resetExpiry = expiry;
+    saveStore();
+  }
+  if (!dbUnavailable()) {
+    try {
+      await query(`UPDATE users SET reset_token=$2, reset_expiry=$3 WHERE id=$1`, [userId, tokenHash, expiry]);
+    } catch {}
+  }
+
+  const base = (process.env.APP_URL || process.env.RENDER_EXTERNAL_URL || "http://localhost:5173").replace(/\/$/, "");
+  const link = `${base}/reset?token=${encodeURIComponent(token)}`;
+  if (email) await sendMail(resetEmail(email, link));
+  return true;
+}
+
+export async function resetPassword(token: string, newPassword: string): Promise<"ok" | "invalid" | "expired" | "weak"> {
+  if (newPassword.length < 8 || newPassword.length > 200) return "weak";
+  if (!/[A-Za-z]/.test(newPassword) || !/[0-9]/.test(newPassword)) return "weak";
+
+  const tokenHash = hashToken(token);
+  const now = Date.now();
+
+  for (const u of memUsersById.values()) {
+    if (u.resetTokenHash === tokenHash) {
+      if (u.resetExpiry && u.resetExpiry < now) return "expired";
+      const salt = randomBytes(16).toString("hex");
+      const passHash = await hash(newPassword, salt);
+      u.passHash = passHash;
+      u.passSalt = salt;
+      u.resetTokenHash = null;
+      u.resetExpiry = null;
+      for (const [th, s] of memSessions) {
+        if (s.userId === u.id) memSessions.delete(th);
+      }
+      saveStore();
+      return "ok";
+    }
+  }
+
+  if (!dbUnavailable()) {
+    try {
+      const row = await queryOne<Record<string, unknown>>(`SELECT id, reset_expiry FROM users WHERE reset_token=$1`, [tokenHash]);
+      if (row) {
+        if (Number(row.reset_expiry) < now) return "expired";
+        const salt = randomBytes(16).toString("hex");
+        const passHash = await hash(newPassword, salt);
+        await query(
+          `UPDATE users SET pass_hash=$2, pass_salt=$3, reset_token=NULL, reset_expiry=NULL WHERE id=$1`,
+          [row.id, passHash, salt]
+        );
+        await query(`DELETE FROM sessions WHERE user_id=$1`, [row.id]);
+        return "ok";
+      }
+    } catch {}
+  }
+  return "invalid";
 }

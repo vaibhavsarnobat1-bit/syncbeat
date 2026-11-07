@@ -47,6 +47,11 @@ const STATEMENTS = [
      expires_at  bigint NOT NULL
    )`,
   `CREATE INDEX IF NOT EXISTS sessions_user_idx ON sessions (user_id)`,
+  `ALTER TABLE users ADD COLUMN IF NOT EXISTS email_verified boolean NOT NULL DEFAULT false`,
+  `ALTER TABLE users ADD COLUMN IF NOT EXISTS verify_token text`,
+  `ALTER TABLE users ADD COLUMN IF NOT EXISTS verify_expiry bigint`,
+  `ALTER TABLE users ADD COLUMN IF NOT EXISTS reset_token text`,
+  `ALTER TABLE users ADD COLUMN IF NOT EXISTS reset_expiry bigint`,
   `CREATE TABLE IF NOT EXISTS room_members (
      room_invite_code  text NOT NULL,
      user_id           text NOT NULL,
