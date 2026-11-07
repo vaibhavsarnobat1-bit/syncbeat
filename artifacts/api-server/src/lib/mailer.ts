@@ -14,11 +14,12 @@ import nodemailer from "nodemailer";
 
 const MAIL_LOG = process.cwd() + "/.mail_log.json";
 
-const SMTP_HOST = process.env.SMTP_HOST || "";
-const SMTP_PORT = Number(process.env.SMTP_PORT || 587);
-const SMTP_USER = process.env.SMTP_USER || "";
-const SMTP_PASS = process.env.SMTP_PASS || "";
-const FROM = process.env.MAIL_FROM || "SyncBeat <noreply@syncbeat.local>";
+// Support both standard SMTP_HOST/USER/PASS or GMAIL_USER/GMAIL_PASS directly
+const SMTP_USER = process.env.SMTP_USER || process.env.GMAIL_USER || "";
+const SMTP_PASS = process.env.SMTP_PASS || process.env.GMAIL_PASS || process.env.GMAIL_APP_PASSWORD || "";
+const SMTP_HOST = process.env.SMTP_HOST || (SMTP_USER.includes("@gmail.com") ? "smtp.gmail.com" : "");
+const SMTP_PORT = Number(process.env.SMTP_PORT || (SMTP_HOST === "smtp.gmail.com" ? 465 : 587));
+const FROM = process.env.MAIL_FROM || (SMTP_USER ? `SyncBeat <${SMTP_USER}>` : "SyncBeat <noreply@syncbeat.local>");
 
 /** True when a real SMTP host is configured; false = dev mode (logs only). */
 export function isSmtpConfigured(): boolean {

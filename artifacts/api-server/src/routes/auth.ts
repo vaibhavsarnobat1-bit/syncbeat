@@ -106,6 +106,29 @@ router.post("/register", async (req: Request, res: Response) => {
     res.status(429).json({ error: "Too many attempts. Try again in a few minutes." });
     return;
   }
+
+  // 🌟 SMART AUTO-LOGIN: If user already exists with matching credentials, log them in automatically!
+  const emailInput = req.body?.email ? String(req.body.email).trim().toLowerCase() : undefined;
+  const existingLogin = await loginUser(emailInput || username, password);
+  if (typeof existingLogin !== "string") {
+    const payload = await issueToken(existingLogin.id);
+    if (payload) {
+      res.status(200).json({ user: payload, autoLoggedIn: true });
+      return;
+    }
+  } else if (existingLogin === "unverified") {
+    const userId = await findUserIdByEmail(emailInput || username);
+    if (userId) {
+      const sent = await sendVerificationForUser(userId);
+      res.status(200).json({
+        user: { id: userId, username, email: sent.email || emailInput, emailVerified: false },
+        needsVerification: true,
+        devCode: sent.devCode,
+      });
+      return;
+    }
+  }
+
   try {
     const user = await registerUser(username, password, req.body?.displayName ? String(req.body.displayName) : undefined, req.body?.email);
     // If an email was provided, the account must be verified before signing in.

@@ -43,6 +43,29 @@ export default function Login() {
   const [nameCheck, setNameCheck] = useState<NameCheck>({ state: 'idle' });
   const inputRef = useRef<HTMLInputElement>(null);
 
+  // 📱 WebOTP API: Auto-detect and fill incoming OTP code on mobile devices!
+  useEffect(() => {
+    if (!verifyEmail) return;
+    if (typeof window !== 'undefined' && 'OTPCredential' in window) {
+      const ac = new AbortController();
+      (navigator as any).credentials?.get({
+        otp: { transport: ['sms', 'email'] },
+        signal: ac.signal,
+      }).then((cred: any) => {
+        if (cred?.code) {
+          const clean = String(cred.code).replace(/\D/g, '').slice(0, 6);
+          if (clean.length === 6) setOtp(clean);
+        }
+      }).catch(() => {
+        /* User typed manually or aborted, non-fatal */
+      });
+      return () => {
+        ac.abort();
+      };
+    }
+    return undefined;
+  }, [verifyEmail]);
+
   useEffect(() => {
     const t = setTimeout(() => inputRef.current?.focus(), 120);
     return () => clearTimeout(t);
@@ -472,10 +495,30 @@ export default function Login() {
                     onChange={(e) => { setOtp(e.target.value.replace(/\D/g, '').slice(0, 6)); if (error) setError(''); }}
                     inputMode="numeric"
                     autoComplete="one-time-code"
+                    autoFocus
+                    maxLength={6}
+                    pattern="[0-9]*"
                     placeholder="••••••"
                     aria-label="Verification code"
-                    className="w-28 px-3 py-2 rounded-lg field-surface text-sm text-center tracking-[0.3em]"
+                    className="w-32 px-3 py-2 rounded-lg field-surface text-base text-center tracking-[0.4em] font-mono font-bold"
                   />
+                  {/* 📋 Mobile Paste from Clipboard Button */}
+                  {typeof navigator !== 'undefined' && 'clipboard' in navigator && (
+                    <button
+                      type="button"
+                      onClick={async () => {
+                        try {
+                          const text = await navigator.clipboard.readText();
+                          const clean = text.replace(/\D/g, '').slice(0, 6);
+                          if (clean.length === 6) setOtp(clean);
+                        } catch {}
+                      }}
+                      title="Paste OTP from clipboard"
+                      className="px-2.5 py-2 rounded-lg bg-white/5 hover:bg-white/10 text-cyan-300 text-xs font-bold border border-white/10 cursor-pointer"
+                    >
+                      Paste
+                    </button>
+                  )}
                   <button
                     type="button"
                     onClick={verifyWithOtp}
