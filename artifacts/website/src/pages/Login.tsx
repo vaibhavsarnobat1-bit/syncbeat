@@ -483,12 +483,9 @@ export default function Login() {
             {verifyEmail && (mode === 'signup' || mode === 'signin') && (
               <div id="verify-notice" className="rounded-xl bg-amber-500/10 border border-amber-400/30 px-3 py-2.5">
                 <p className="text-[11px] font-semibold text-amber-200">Verify your email to sign in.</p>
-                <p className="mt-0.5 text-[10px] text-amber-200/70">Enter the 6-digit code we emailed you.</p>
-                {devCode && (
-                  <p className="mt-1.5 text-[12px] font-extrabold tracking-[0.35em] text-cyan-200 bg-cyan-500/10 border border-cyan-400/30 rounded-lg px-3 py-1.5 text-center">
-                    Dev code: <span id="dev-code">{devCode}</span>
-                  </p>
-                )}
+                <p className="mt-0.5 text-[10px] text-amber-200/70">
+                  Enter the 6-digit verification code sent to <strong className="text-cyan-300">{verifyEmail}</strong>.
+                </p>
                 <div className="mt-2 flex gap-2">
                   <input
                     value={otp}
