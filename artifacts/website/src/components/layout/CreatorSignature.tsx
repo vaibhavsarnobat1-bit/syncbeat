@@ -23,8 +23,6 @@ interface CreatorSignatureProps {
 }
 
 export function CreatorSignature({ className = "", variant = 'full' }: CreatorSignatureProps) {
-  const WHATSAPP_NUMBER = "7248949501";
-  const WHATSAPP_LINK = "https://wa.me/917248949501?text=Hi%20Vaibhav!%20Connecting%20with%20you%20from%20SyncBeat.";
   const EMAIL = "vaibhavsarnobat1@gmail.com";
   const LINKEDIN_LINK = "https://www.linkedin.com/in/vaibhav-sarnobat-4704052aa?utm_source=share_via&utm_content=profile&utm_medium=member_android";
 
@@ -65,36 +63,6 @@ export function CreatorSignature({ className = "", variant = 'full' }: CreatorSi
 
       {/* 🌟 Direct Connect Action Buttons with Glowing Sticks 🌟 */}
       <div className="flex flex-wrap items-center justify-center gap-3 sm:gap-4 max-w-4xl px-2">
-
-        {/* 📱 WHATSAPP / CONTACT NUMBER */}
-        <a
-          href={WHATSAPP_LINK}
-          target="_blank"
-          rel="noopener noreferrer"
-          className="group relative flex items-center gap-3 px-4 py-2.5 rounded-xl bg-gradient-to-b from-white/[0.08] to-white/[0.02] hover:from-emerald-500/20 hover:to-emerald-900/30 border border-emerald-500/30 hover:border-emerald-400/80 backdrop-blur-md transition-all duration-300 hover:scale-[1.04] hover:shadow-[0_0_24px_rgba(16,185,129,0.35)] cursor-pointer"
-          title="Click to chat directly on WhatsApp (+91 7248949501)"
-        >
-          {/* 🟢 Neon Stick in front */}
-          <span className="w-1.5 h-6 rounded-full bg-emerald-400 shadow-[0_0_10px_#10b981] group-hover:scale-y-110 transition-transform duration-300" />
-
-          {/* WhatsApp Sticker Icon */}
-          <div className="w-7 h-7 rounded-lg bg-emerald-500/20 border border-emerald-400/50 flex items-center justify-center text-emerald-400 group-hover:bg-emerald-500 group-hover:text-black transition-colors duration-300 shadow-[0_0_10px_rgba(16,185,129,0.2)]">
-            <WhatsAppIcon className="w-4 h-4" />
-          </div>
-
-          <div className="flex flex-col text-left">
-            <span className="text-[10px] text-emerald-400 font-mono font-bold uppercase tracking-wider flex items-center gap-1">
-              WhatsApp / Call
-              <ExternalLink className="w-2.5 h-2.5 opacity-60 group-hover:opacity-100" />
-            </span>
-            <span className="text-xs sm:text-sm font-extrabold text-white group-hover:text-emerald-300 transition-colors tracking-wide">
-              {WHATSAPP_NUMBER}
-            </span>
-          </div>
-        </a>
-
-        {/* Separator Stick */}
-        <span className="hidden sm:inline-block w-px h-7 bg-white/20" />
 
         {/* ✉️ EMAIL LINK */}
         <a
