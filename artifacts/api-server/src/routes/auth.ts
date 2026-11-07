@@ -259,7 +259,9 @@ router.post("/verify-email-otp", async (req: Request, res: Response) => {
   }
   const status = await verifyOtp(email, otp);
   if (status === "ok") {
-    res.json({ ok: true });
+    const userId = await findUserIdByEmail(email);
+    const session = userId ? await issueToken(userId) : null;
+    res.json({ ok: true, user: session });
     return;
   }
   if (status === "expired") {

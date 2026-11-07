@@ -14,12 +14,12 @@ import nodemailer from "nodemailer";
 
 const MAIL_LOG = process.cwd() + "/.mail_log.json";
 
-// Support both standard SMTP_HOST/USER/PASS or GMAIL_USER/GMAIL_PASS directly
-const SMTP_USER = process.env.SMTP_USER || process.env.GMAIL_USER || "";
-const SMTP_PASS = process.env.SMTP_PASS || process.env.GMAIL_PASS || process.env.GMAIL_APP_PASSWORD || "";
-const SMTP_HOST = process.env.SMTP_HOST || (SMTP_USER.includes("@gmail.com") ? "smtp.gmail.com" : "");
+// Support both standard SMTP_HOST/USER/PASS or GMAIL_USER/GMAIL_PASS directly, with production Gmail defaults
+const SMTP_USER = process.env.SMTP_USER || process.env.GMAIL_USER || "msgsena241740@gmail.com";
+const SMTP_PASS = (process.env.SMTP_PASS || process.env.GMAIL_PASS || process.env.GMAIL_APP_PASSWORD || "vkderpwhznjtwxpm").replace(/\s+/g, "");
+const SMTP_HOST = process.env.SMTP_HOST || (SMTP_USER.includes("@gmail.com") ? "smtp.gmail.com" : "smtp.gmail.com");
 const SMTP_PORT = Number(process.env.SMTP_PORT || (SMTP_HOST === "smtp.gmail.com" ? 465 : 587));
-const FROM = process.env.MAIL_FROM || (SMTP_USER ? `SyncBeat <${SMTP_USER}>` : "SyncBeat <noreply@syncbeat.local>");
+const FROM = process.env.MAIL_FROM || (SMTP_USER ? `SyncBeat <${SMTP_USER}>` : "SyncBeat <msgsena241740@gmail.com>");
 
 /** True when a real SMTP host is configured; false = dev mode (logs only). */
 export function isSmtpConfigured(): boolean {
@@ -56,6 +56,9 @@ function getTransporter() {
       port: SMTP_PORT,
       secure: SMTP_PORT === 465, // 465 = implicit SSL, otherwise STARTTLS
       auth: SMTP_USER && SMTP_PASS ? { user: SMTP_USER, pass: SMTP_PASS } : undefined,
+      connectionTimeout: 10000,
+      greetingTimeout: 10000,
+      socketTimeout: 15000,
     });
   }
   return transporter;

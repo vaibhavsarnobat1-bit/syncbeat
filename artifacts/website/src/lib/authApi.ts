@@ -64,14 +64,14 @@ export async function registerRequest(
 export const loginRequest = (username: string, password: string) =>
   postJson("/auth/login", { username, password });
 
-export async function verifyEmailRequest(email: string, otp: string): Promise<{ ok: boolean; error?: string }> {
+export async function verifyEmailRequest(email: string, otp: string): Promise<{ ok: boolean; error?: string; user?: SessionUser }> {
   const res = await fetch("/api/auth/verify-email-otp", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ email, otp }),
   });
   const data = await res.json().catch(() => ({}));
-  return { ok: res.ok, error: data?.error };
+  return { ok: res.ok, error: data?.error, user: data?.user };
 }
 
 export async function resendVerificationRequest(email: string): Promise<{ ok: boolean; error?: string; devCode?: string }> {
