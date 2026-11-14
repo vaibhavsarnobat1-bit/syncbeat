@@ -1245,26 +1245,32 @@ html.light,
 }
 
 /* ──────────────────────────────────────────────────────────────────────────
-   WHITE / LIGHT MODE OVERRIDES
-   Ensures every page (Home, Lobby, Room, Login, Admin, Download) adapts
-   cleanly when user switches to White / Light Mode!
+   WHITE / LIGHT MODE HIGH-CONTRAST PRECISION STYLES
+   Ensures 100% readability across Home, Lobby, Room, Login, and Admin.
+   Original Dark Mode is 100% untouched.
    ────────────────────────────────────────────────────────────────────────── */
+
+/* 1. Base page background and typography */
 html.light,
 html.light body {
   background-color: #f8fafc !important;
   color: #0f172a !important;
 }
 
+/* 2. Container backgrounds (replace deep dark navy/black containers with crisp white / slate-50) */
 html.light [class*="bg-[#05070e]"],
 html.light [class*="bg-[#040711]"],
 html.light [class*="bg-[#050814]"],
 html.light [class*="bg-[#06040f]"],
 html.light [class*="bg-[#040814]"],
-html.light [class*="bg-[#030712]"] {
+html.light [class*="bg-[#030712]"],
+html.light .page-bg-lobby,
+html.light .app-bg {
   background-color: #f8fafc !important;
   color: #0f172a !important;
 }
 
+/* 3. Surface Cards & Modals (solid elegant white with crisp borders & soft shadows) */
 html.light [class*="bg-[#070d1c]"],
 html.light [class*="bg-[#080d1e]"],
 html.light [class*="bg-[#090d1d]"],
@@ -1277,37 +1283,56 @@ html.light [class*="bg-[#080c18]"],
 html.light [class*="bg-[#070a16]"],
 html.light [class*="bg-[#090b14]"],
 html.light [class*="bg-[#050810]"],
-html.light [class*="bg-[#03050a]"] {
-  background-color: #ffffff !important;
-  color: #0f172a !important;
-  border-color: #e2e8f0 !important;
-}
-
+html.light [class*="bg-[#03050a]"],
 html.light .surface-card,
 html.light .glass-card,
-html.light .glass-panel {
-  background: rgba(255, 255, 255, 0.95) !important;
-  border-color: #e2e8f0 !important;
-  color: #0f172a !important;
-  box-shadow: 0 10px 30px rgba(15, 23, 42, 0.08) !important;
-}
-
-html.light .surface-header {
-  background: rgba(255, 255, 255, 0.92) !important;
-  border-color: #e2e8f0 !important;
-  color: #0f172a !important;
-}
-
-html.light .field-surface,
-html.light input:not([type="checkbox"]):not([type="radio"]),
-html.light textarea {
+html.light .glass-panel,
+html.light .glass-toolbar {
   background-color: #ffffff !important;
   color: #0f172a !important;
-  border-color: #cbd5e1 !important;
+  border-color: #e2e8f0 !important;
+  box-shadow: 0 4px 20px -2px rgba(15, 23, 42, 0.06), 0 2px 6px -1px rgba(15, 23, 42, 0.04) !important;
+}
+
+/* 4. Headers & Navigation bars */
+html.light .surface-header,
+html.light header.fixed {
+  background-color: rgba(255, 255, 255, 0.94) !important;
+  border-color: #e2e8f0 !important;
+  color: #0f172a !important;
+  backdrop-filter: blur(20px) !important;
+}
+
+/* 5. Translucent boxes (pills, badges, chips, row highlights) */
+html.light [class*="bg-white/"],
+html.light [class*="bg-white/["] {
+  background-color: #f1f5f9 !important;
+  border-color: #e2e8f0 !important;
+  color: #0f172a !important;
+}
+
+html.light [class*="bg-black/1"],
+html.light [class*="bg-black/2"],
+html.light [class*="bg-black/3"],
+html.light [class*="bg-black/4"],
+html.light [class*="bg-black/5"] {
+  background-color: #f1f5f9 !important;
+  border-color: #e2e8f0 !important;
+  color: #0f172a !important;
+}
+
+/* 6. TEXT VISIBILITY FIX: All translucent white / light slate text MUST be dark & readable on light bg */
+html.light [class*="text-white/"] {
+  color: #334155 !important; /* Slate-700 for high readability */
 }
 
 html.light .text-white {
   color: #0f172a !important;
+}
+
+html.light .text-slate-200,
+html.light .text-slate-300 {
+  color: #334155 !important;
 }
 
 html.light .text-slate-400,
@@ -1316,44 +1341,118 @@ html.light .text-muted-foreground {
   color: #64748b !important;
 }
 
+/* 7. Cyan / Brand accents — deeper in light mode for optimal contrast */
 html.light .text-cyan-100,
 html.light .text-cyan-200,
-html.light .text-cyan-300 {
-  color: #0e7490 !important;
+html.light .text-cyan-300,
+html.light .text-cyan-400,
+html.light [class*="text-[#38bdf8]"] {
+  color: #0e7490 !important; /* Deep Cyan-700 */
 }
 
-html.light .border-white\/\[0\.08\],
-html.light .border-white\/\[0\.12\],
-html.light .border-white\/6,
-html.light .border-white\/8,
-html.light .border-white\/10,
-html.light .border-white\/12,
-html.light .border-white\/15,
-html.light .border-white\/20 {
+html.light .text-shimmer {
+  background: linear-gradient(135deg, #0284c7, #0d9488) !important;
+  -webkit-background-clip: text !important;
+  -webkit-text-fill-color: transparent !important;
+}
+
+html.light .mix-blend-screen {
+  mix-blend-mode: multiply !important;
+  opacity: 0.12 !important;
+}
+
+/* 8. Input fields & textareas */
+html.light .field-surface,
+html.light input:not([type="checkbox"]):not([type="radio"]),
+html.light textarea,
+html.light select {
+  background-color: #ffffff !important;
+  color: #0f172a !important;
+  border-color: #cbd5e1 !important;
+  box-shadow: inset 0 1px 2px rgba(15, 23, 42, 0.05) !important;
+}
+
+html.light input::placeholder,
+html.light textarea::placeholder {
+  color: #94a3b8 !important;
+}
+
+html.light input:focus,
+html.light textarea:focus {
+  border-color: #0891b2 !important;
+  box-shadow: 0 0 0 3px rgba(8, 145, 178, 0.15) !important;
+}
+
+/* 9. Action buttons & saturated pills: preserve white text inside colored buttons! */
+html.light .action-primary,
+html.light button.action-primary,
+html.light .bg-primary,
+html.light .bg-cyan-500,
+html.light .bg-cyan-600,
+html.light [class*="bg-gradient-to-"] button,
+html.light .btn-primary {
+  color: #ffffff !important;
+}
+
+html.light .action-primary *,
+html.light button.action-primary * {
+  color: #ffffff !important;
+}
+
+/* 10. All borders in light mode */
+html.light [class*="border-white/"],
+html.light [class*="border-white/["] {
   border-color: #e2e8f0 !important;
 }
 
-html.light .bg-black\/10,
-html.light .bg-black\/20,
-html.light .bg-black\/25,
-html.light .bg-black\/30,
-html.light .bg-black\/40,
-html.light .bg-black\/50,
-html.light .bg-black\/60 {
-  background-color: rgba(241, 245, 249, 0.8) !important;
-}
-
-html.light .bg-black {
+/* 11. Chips, tags and small indicators */
+html.light .chip-pop {
   background-color: #f1f5f9 !important;
+  border-color: #cbd5e1 !important;
+  color: #1e293b !important;
+}
+html.light .chip-pop:hover {
+  background-color: #e2e8f0 !important;
 }
 
-html.light .app-bg {
-  background-color: #f8fafc !important;
+/* 12. Soften starfield / ambient canvas & overlays in light mode */
+html.light canvas {
+  opacity: 0.35 !important;
+  filter: contrast(0.85) brightness(1.2);
+}
+
+html.light [class*="bg-gradient-to-b from-[#060708]"] {
+  background: linear-gradient(to bottom, rgba(255, 255, 255, 0.75) 0%, rgba(248, 250, 252, 0.5) 50%, rgba(241, 245, 249, 0.9) 100%) !important;
 }
 
 html.light .app-bg::before {
-  opacity: 0.18;
+  opacity: 0.12;
   filter: invert(1);
+}
+
+/* 13. Avatar initials & colorful badges: keep white text */
+html.light .rounded-full[style*="background"] {
+  color: #ffffff !important;
+}
+html.light .rounded-full[style*="background"] * {
+  color: #ffffff !important;
+}
+
+/* 14. Row hover, queue items & divides */
+html.light [class*="divide-white/"] > :not([hidden]) ~ :not([hidden]) {
+  border-color: #e2e8f0 !important;
+}
+
+html.light .row-slide:hover,
+html.light [class*="hover:bg-white/"]:hover {
+  background-color: #f1f5f9 !important;
+}
+
+/* 15. Search results dropdown & popovers in Room */
+html.light [class*="bg-[#0b0f1c]/95"] {
+  background-color: #ffffff !important;
+  border-color: #cbd5e1 !important;
+  box-shadow: 0 10px 30px rgba(15, 23, 42, 0.12) !important;
 }
 
 
