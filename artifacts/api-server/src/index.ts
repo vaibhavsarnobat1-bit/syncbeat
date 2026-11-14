@@ -44,9 +44,9 @@ void bootDatabase();
 
 // ────────────────────────────────────────────────────────────────────────────
 // 🔄 SELF-PING KEEP-ALIVE: Prevents Render free-tier cold-start sleeping.
-// Pings /api/healthz every 10 minutes so the service NEVER goes idle.
+// Pings /api/healthz every 5 minutes so the service NEVER goes idle.
 // ────────────────────────────────────────────────────────────────────────────
-const RENDER_EXTERNAL_URL = process.env["RENDER_EXTERNAL_URL"];
+const RENDER_EXTERNAL_URL = process.env["RENDER_EXTERNAL_URL"] || (process.env.NODE_ENV === "production" ? "https://syncbeat-vaibhav.onrender.com" : "");
 if (RENDER_EXTERNAL_URL) {
   const pingUrl = `${RENDER_EXTERNAL_URL}/api/healthz`;
   const client = pingUrl.startsWith("https") ? https : http;
