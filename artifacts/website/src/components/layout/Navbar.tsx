@@ -56,7 +56,7 @@ export function Navbar() {
                 </li>
               ))}
             </ul>
-            <div className="flex items-center gap-4 border-l border-border pl-6">
+            <div className="flex items-center gap-3 border-l border-border pl-6">
               <a href="#contact" className="text-sm font-medium text-foreground hover:text-primary transition-colors">
                 Sign In
               </a>

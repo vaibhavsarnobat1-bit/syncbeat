@@ -86,7 +86,7 @@ export function Features() {
             const Icon = feature.icon;
             return (
               <motion.div key={index} variants={item}>
-                <Card className="h-full border-border/50 bg-background/50 backdrop-blur-sm hover:shadow-md transition-shadow duration-300">
+                <Card className="magic-card h-full">
                   <CardHeader>
                     <div className={`w-12 h-12 rounded-xl ${feature.bgColor} flex items-center justify-center mb-4`}>
                       <Icon className={`w-6 h-6 ${feature.color}`} />

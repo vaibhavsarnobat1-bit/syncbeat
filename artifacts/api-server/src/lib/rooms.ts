@@ -16,6 +16,10 @@ export interface RoomMember {
   displayName: string;
   avatarColor: string;
   joinedAt: number;
+  /** Admin-granted permission to change / skip / queue songs. */
+  canChangeSong?: boolean;
+  /** Admin-granted permission to play / pause / seek. */
+  canPause?: boolean;
   ws?: unknown;
 }
 
@@ -72,6 +76,7 @@ async function upsertRoomToDB(room: Room): Promise<void> {
       `INSERT INTO rooms (invite_code, id, name, host_user_id, created_at, current_track, queue, history, is_playing, playback_time, last_sync_at)
        VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11)
        ON CONFLICT (invite_code) DO UPDATE SET
+         host_user_id = EXCLUDED.host_user_id,
          current_track = EXCLUDED.current_track,
          queue = EXCLUDED.queue,
          history = EXCLUDED.history,

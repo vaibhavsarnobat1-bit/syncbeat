@@ -4,7 +4,7 @@ import {
   ArrowLeft, Eye, EyeOff, Home as HomeIcon, Link2, Loader2, Sparkles, UserPlus, LogIn, ShieldCheck, Mail, CheckCircle2, RotateCcw, KeyRound
 } from 'lucide-react';
 import { useAuthStore } from '@/lib/store';
-import { AuthError, loginRequest, registerRequest, forgotPasswordRequest, resendVerificationRequest, verifyEmailRequest } from '@/lib/authApi';
+import { AuthError, loginRequest, registerRequest, forgotPasswordRequest, resetPasswordRequest, resendVerificationRequest, verifyEmailRequest } from '@/lib/authApi';
 import { BrandMark } from '@/components/BrandMark';
 import { ElementsCollection } from '@designcodeio/threeui';
 import '@designcodeio/threeui/style.css';
@@ -38,8 +38,10 @@ export default function Login() {
   const [info, setInfo] = useState('');
   const [verifyEmail, setVerifyEmail] = useState<string>('');
   const [otp, setOtp] = useState('');
-  const [devCode, setDevCode] = useState<string>('');
-  const [busy, setBusy] = useState(false);
+  const [forgotEmail, setForgotEmail] = useState('');
+  const [forgotAccountEmail, setForgotAccountEmail] = useState('');
+  const [resetSent, setResetSent] = useState(false);
+    const [busy, setBusy] = useState(false);
   const [attemptsLeft, setAttemptsLeft] = useState(3);
   const [nameCheck, setNameCheck] = useState<NameCheck>({ state: 'idle' });
   const inputRef = useRef<HTMLInputElement>(null);
@@ -121,7 +123,7 @@ export default function Login() {
     try {
       const r = await resendVerificationRequest(target);
       if (!r.ok) throw new Error(r.error || 'Could not resend the email');
-      if (r.devCode) setDevCode(r.devCode);
+      // Remove devCode set, rely on email OTP only.
       setAttemptsLeft(3);
       setInfo('New 6-digit verification code sent! Please check your inbox and spam folder.');
     } catch (err: unknown) {
@@ -177,18 +179,71 @@ export default function Login() {
     const name = username.trim().toLowerCase();
 
     if (mode === 'forgot') {
-      if (!name && !email.trim()) {
-        setError('Enter your email or username');
+      if (!resetSent) {
+        const target = (email.trim() || name).toLowerCase();
+        if (!target) {
+          setError('Enter your username or email');
+          return;
+        }
+        setBusy(true);
+        setError('');
+        setInfo('');
+        try {
+          const r = await forgotPasswordRequest(target);
+          if (!r.ok) throw new Error(r.error || 'Something went wrong');
+          if (!r.found || !r.email) {
+            setError('No account found with that username or email.');
+            return;
+          }
+          setForgotEmail(r.email);
+          setForgotAccountEmail(r.email);
+          setResetSent(true);
+          setOtp('');
+          setInfo(`We sent a 6-digit code to ${r.email}`);
+        } catch (err: unknown) {
+          setError(err instanceof Error ? err.message : 'Please try again');
+        } finally {
+          setBusy(false);
+        }
+        return;
+      }
+
+      // Step 2: verify OTP and set a new username + password.
+      const em = forgotEmail;
+      const codeVal = otp.trim();
+      const nu = username.trim().toLowerCase();
+      if (!codeVal || codeVal.length !== 6) {
+        setError('Enter the 6-digit code from your email');
+        return;
+      }
+      if (!nu || !NAME_PATTERN.test(nu)) {
+        setError('Use 3-24 characters: letters, numbers, . _ - for your username');
+        return;
+      }
+      if (password.length < 8 || !/[A-Za-z]/.test(password) || !/[0-9]/.test(password)) {
+        setError('Password must be at least 8 characters with a letter and a number');
+        return;
+      }
+      if (password !== confirm) {
+        setError('Passwords do not match');
         return;
       }
       setBusy(true);
       setError('');
       setInfo('');
       try {
-        const r = await forgotPasswordRequest(email.trim() || name);
-        if (!r.ok) throw new Error(r.error || 'Something went wrong');
-        setInfo('If an account exists, a reset link has been sent to your email.');
-        setTimeout(() => { setMode('signin'); setInfo(''); }, 4000);
+        const r = await resetPasswordRequest({ email: em, code: codeVal, username: nu, password });
+        if (!r.ok) throw new Error(r.error || 'Reset failed');
+        setInfo('Password updated. Sign in with your new credentials.');
+        setTimeout(() => {
+          setMode('signin');
+          setResetSent(false);
+          setForgotEmail('');
+          setOtp('');
+          setConfirm('');
+          setPassword('');
+          setInfo('');
+        }, 2500);
       } catch (err: unknown) {
         setError(err instanceof Error ? err.message : 'Please try again');
       } finally {
@@ -239,8 +294,7 @@ export default function Login() {
         localStorage.setItem(LAST_USERNAME_KEY, name);
         if (result.needsVerification) {
           setVerifyEmail(email.trim().toLowerCase());
-          if (result.devCode) setDevCode(result.devCode);
-          setInfo('Account created! We sent a 6-digit verification code to your email. Enter it below to verify.');
+          setInfo('Account created! Check your email inbox (and spam folder) for a 6-digit verification code.');
         } else if (result.user) {
           setSession(result.user);
           setLocation(result.user.role === 'admin' && !inviteCode ? '/admin' : next, { replace: true });
@@ -280,12 +334,15 @@ export default function Login() {
     setError('');
     setInfo('');
     setUsername('');
+    setEmail('');
     setPassword('');
     setConfirm('');
     setShowPassword(false);
     setOtp('');
-    setDevCode('');
     setVerifyEmail('');
+    setForgotEmail('');
+    setForgotAccountEmail('');
+    setResetSent(false);
     setAttemptsLeft(3);
   };
 
@@ -340,7 +397,7 @@ export default function Login() {
             {verifyEmail
               ? 'Enter the 6-digit code sent to your inbox'
               : mode === 'forgot'
-              ? 'We will email you a secure reset link'
+              ? 'Enter your username or email to receive a 6-digit code'
               : inviteCode
               ? 'Sign in to join the synchronized room 🎧'
               : 'Synchronized Music with Friends'}
@@ -370,6 +427,7 @@ export default function Login() {
                   {info}
                 </div>
               )}
+
 
               {error && (
                 <div id="login-error" className="text-xs font-semibold text-rose-300 bg-rose-500/10 border border-rose-400/30 rounded-xl px-3 py-2 text-center">
@@ -509,7 +567,7 @@ export default function Login() {
                 </div>
               )}
 
-              <form onSubmit={submit} className="space-y-3.5">
+              <form onSubmit={submit} autoComplete="off" className="space-y-3.5">
                 {mode === 'signup' && (
                   <label className="block">
                     <span className="text-[11px] font-bold form-label">Email</span>
@@ -525,13 +583,14 @@ export default function Login() {
                   </label>
                 )}
 
-                <label className="block">
-                  <span className="text-[11px] font-bold form-label">{mode === 'signin' ? 'Username and email' : 'Username'}</span>
+                {(mode !== 'forgot' || resetSent) && (
+                  <label className="block">
+                    <span className="text-[11px] font-bold form-label">{mode === 'signin' ? 'Username and email' : 'Username'}</span>
                   <input
                     ref={inputRef}
                     value={username}
                     onChange={(e) => { setUsername(e.target.value); if (error) setError(''); }}
-                    autoComplete="username"
+                    autoComplete="off"
                     spellCheck={false}
                     id="field-username"
                     placeholder={mode === 'signin' ? 'you@example.com or username' : 'e.g. user'}
@@ -568,16 +627,18 @@ export default function Login() {
                       ))}
                     </div>
                   )}
-                </label>
+                  </label>
+                )}
 
-                <label className="block">
-                  <span className="text-[11px] font-bold form-label">Password</span>
+                {(mode !== 'forgot' || resetSent) && (
+                  <label className="block">
+                    <span className="text-[11px] font-bold form-label">Password</span>
                   <div className="relative mt-1.5">
                     <input
                       value={password}
                       onChange={(e) => { setPassword(e.target.value); if (error) setError(''); }}
                       type={showPassword ? 'text' : 'password'}
-                      autoComplete={mode === 'signup' ? 'new-password' : mode === 'forgot' ? 'off' : 'current-password'}
+                      autoComplete="off"
                       id="field-password"
                       placeholder={mode === 'signup' ? 'At least 8 characters, 1 letter & 1 number' : 'Your password'}
                       className="w-full px-3.5 py-3 pr-12 rounded-xl field-surface text-sm transition-[color,background-color,border-color,box-shadow,transform]"
@@ -592,9 +653,10 @@ export default function Login() {
                       {showPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
                     </button>
                   </div>
-                </label>
+                  </label>
+                )}
 
-                {mode === 'signup' && (
+                {(mode === 'signup' || (mode === 'forgot' && resetSent)) && (
                   <label className="block">
                     <span className="text-[11px] font-bold form-label">Confirm password</span>
                     <input
@@ -609,18 +671,45 @@ export default function Login() {
                   </label>
                 )}
 
-                {mode === 'forgot' && (
+                {mode === 'forgot' && !resetSent && (
                   <label className="block">
-                    <span className="text-[11px] font-bold form-label">Email or username</span>
+                    <span className="text-[11px] font-bold form-label">Username or email</span>
                     <input
                       value={email || username}
                       onChange={(e) => { if (e.target.value.includes('@')) setEmail(e.target.value); else setUsername(e.target.value); if (error) setError(''); }}
-                      autoComplete="email"
+                      type="text"
+                      autoComplete="off"
                       id="field-forgot"
                       placeholder="you@example.com or username"
                       className="mt-1.5 w-full px-3.5 py-3 rounded-xl field-surface text-sm transition-[color,background-color,border-color,box-shadow,transform]"
                     />
                   </label>
+                )}
+
+                {mode === 'forgot' && resetSent && (
+                  <div className="space-y-3.5">
+                    <label className="block">
+                      <span className="text-[11px] font-bold form-label">Verification code</span>
+                      <input
+                        value={otp}
+                        onChange={(e) => { const clean = e.target.value.replace(/\D/g, '').slice(0, 6); setOtp(clean); if (error) setError(''); }}
+                        inputMode="numeric"
+                        autoComplete="one-time-code"
+                        maxLength={6}
+                        pattern="[0-9]*"
+                        placeholder="••••••"
+                        aria-label="6-digit verification code"
+                        className="mt-1.5 w-full px-3.5 py-3 rounded-xl field-surface text-center text-2xl tracking-[0.45em] font-mono font-bold text-cyan-200 border border-cyan-500/40 focus:border-cyan-400"
+                      />
+                    </label>
+                    <button
+                      type="button"
+                      onClick={() => { setResetSent(false); setInfo(''); setError(''); }}
+                      className="text-[11px] font-bold text-muted-foreground hover:text-cyan-300 transition-colors cursor-pointer"
+                    >
+                      ← Use a different email
+                    </button>
+                  </div>
                 )}
 
                 {mode === 'signin' && (
@@ -652,7 +741,7 @@ export default function Login() {
                     {busy
                       ? <Loader2 className="w-4 h-4 animate-spin" />
                       : <Sparkles className="w-4 h-4 group-hover:rotate-12 transition-transform" />}
-                    {busy ? 'Please wait…' : mode === 'signup' ? 'Create account' : mode === 'forgot' ? 'Send reset link' : 'Sign in'}
+                    {busy ? 'Please wait…' : mode === 'signup' ? 'Create account' : mode === 'forgot' ? (resetSent ? 'Save new password' : 'Send code') : 'Sign in'}
                   </span>
                 </button>
               </form>
@@ -661,7 +750,7 @@ export default function Login() {
                 {mode === 'signup'
                   ? 'Your password stays on SyncBeat. We send a verification email to confirm your address.'
                   : mode === 'forgot'
-                    ? 'Back to sign in — check your inbox for the reset link.'
+                    ? 'Back to sign in — check your inbox for the 6-digit code.'
                     : 'Use the same username (or email) and password you created.'}
               </p>
             </>

@@ -95,15 +95,21 @@ export function setupWebSocket(server: Server) {
     client.roomInviteCode = roomId;
     client.isAlive = true;
 
-    const member: RoomMember = { userId, displayName, avatarColor, joinedAt: Date.now() };
+    const isHost = userId === room.hostUserId;
+    const member: RoomMember = { userId, displayName, avatarColor, joinedAt: Date.now(), canChangeSong: isHost, canPause: isHost };
     room.members.set(userId, member);
     void recordMembership(roomId, { userId, displayName, avatarColor });
 
-    const members = Array.from(room.members.values()).map((m) => ({
+    const serializeMembers = () => Array.from(room.members.values()).map((m) => ({
       userId: m.userId,
       displayName: m.displayName,
       avatarColor: m.avatarColor,
+      canChangeSong: !!m.canChangeSong,
+      canPause: !!m.canPause,
+      canControl: !!(m.canChangeSong || m.canPause),
     }));
+
+    const members = serializeMembers();
 
     const currentComputedTime = room.isPlaying && room.lastSyncAt
       ? room.currentTime + (Date.now() - room.lastSyncAt) / 1000
@@ -153,6 +159,19 @@ export function setupWebSocket(server: Server) {
       const msgType = data.type as string;
 
       // ── Chat ──
+      // Host always has control; members only if the host granted them permission.
+      const isHost = userId === room.hostUserId;
+      const canPause = isHost || !!room.members.get(userId)?.canPause;
+      const canChangeSong = isHost || !!room.members.get(userId)?.canChangeSong;
+      const serializeMembers = () => Array.from(room.members.values()).map((m) => ({
+        userId: m.userId,
+        displayName: m.displayName,
+        avatarColor: m.avatarColor,
+        canChangeSong: !!m.canChangeSong,
+        canPause: !!m.canPause,
+        canControl: !!(m.canChangeSong || m.canPause),
+      }));
+
       if (msgType === "chat") {
         const chatMsg: ChatMessage = {
           id: nanoid(8),
@@ -166,29 +185,83 @@ export function setupWebSocket(server: Server) {
         addMessageToRoom(roomId, chatMsg);
         broadcastAll(roomId, { type: "chat", message: chatMsg });
 
+      } else if (msgType === "member_role") {
+        // Host: grant/revoke a member's permission to change songs / play-pause.
+        if (!isHost) return;
+        const targetUserId = String(data.targetUserId || "");
+        const target = room.members.get(targetUserId);
+        if (!target || targetUserId === room.hostUserId) return;
+        const grants: string[] = [];
+        if (typeof data.canChangeSong === "boolean") {
+          target.canChangeSong = data.canChangeSong;
+          grants.push(`change songs ${data.canChangeSong ? "on" : "off"}`);
+        }
+        if (typeof data.canPause === "boolean") {
+          target.canPause = data.canPause;
+          grants.push(`play/pause ${data.canPause ? "on" : "off"}`);
+        }
+        broadcastAll(roomId, { type: "members_update", members: serializeMembers() });
+        if (grants.length > 0) {
+          addSystemMessage(roomId, `🎛️ ${target.displayName}: ${grants.join(", ")}`).then((m) => broadcastAll(roomId, { type: "chat", message: m }));
+        }
+
+      } else if (msgType === "member_transfer_host") {
+        // Host only: transfer host powers to another member.
+        if (!isHost) return;
+        const targetUserId = String(data.targetUserId || "");
+        const target = room.members.get(targetUserId);
+        if (!target || targetUserId === room.hostUserId) return;
+        const oldHost = room.members.get(room.hostUserId);
+        if (oldHost) { oldHost.canChangeSong = false; oldHost.canPause = false; }
+        room.hostUserId = targetUserId;
+        target.canChangeSong = true;
+        target.canPause = true;
+        void updateRoomPlayback(room);
+        broadcastAll(roomId, { type: "host_changed", hostUserId: targetUserId, members: serializeMembers() });
+        addSystemMessage(roomId, `👑 ${target.displayName} is now the room host`).then((m) => broadcastAll(roomId, { type: "chat", message: m }));
+
+      } else if (msgType === "member_remove") {
+        // Host: kick a member out of the room.
+        if (userId !== room.hostUserId) return;
+        const targetUserId = String(data.targetUserId || "");
+        const target = room.members.get(targetUserId);
+        if (!target) return;
+        if (targetUserId === room.hostUserId) return;
+        room.members.delete(targetUserId);
+        broadcastAll(roomId, { type: "member_removed", userId: targetUserId, memberCount: room.members.size });
+        addSystemMessage(roomId, `👋 ${target.displayName} was removed by the host`).then((m) => broadcastAll(roomId, { type: "chat", message: m }));
+        // Close that member's own socket if they are connected.
+        wss.clients.forEach((c) => {
+          const wsc = c as WsClient;
+          if (wsc.roomInviteCode === roomId && wsc.userId === targetUserId && wsc.readyState === 1) {
+            wsc.send(JSON.stringify({ type: "error", message: "You were removed from this room by the host" }));
+            wsc.close();
+          }
+        });
+
       // ── Playback ──
-      } else if (msgType === "play") {
+      } else if (msgType === "play" && canPause) {
         room.isPlaying = true;
         room.currentTime = Math.max(0, Number(data.currentTime) || 0);
         room.lastSyncAt = Date.now();
         updateRoomPlayback(room);
         broadcastAll(roomId, { type: "play", currentTime: room.currentTime, timestamp: room.lastSyncAt });
 
-      } else if (msgType === "pause") {
+      } else if (msgType === "pause" && canPause) {
         room.isPlaying = false;
         room.currentTime = Math.max(0, Number(data.currentTime) || 0);
         room.lastSyncAt = Date.now();
         updateRoomPlayback(room);
         broadcastAll(roomId, { type: "pause", currentTime: room.currentTime, timestamp: room.lastSyncAt });
 
-      } else if (msgType === "seek") {
+      } else if (msgType === "seek" && canPause) {
         room.currentTime = Math.max(0, Number(data.currentTime) || 0);
         room.lastSyncAt = Date.now();
         updateRoomPlayback(room);
         broadcastAll(roomId, { type: "seek", currentTime: room.currentTime, isPlaying: room.isPlaying, timestamp: room.lastSyncAt });
 
       // ── Track change ──
-      } else if (msgType === "track_change") {
+      } else if (msgType === "track_change" && canChangeSong) {
         if (room.currentTrack) {
           room.history.unshift(room.currentTrack);
           if (room.history.length > 20) room.history.pop();
@@ -241,14 +314,14 @@ export function setupWebSocket(server: Server) {
         });
 
       // ── Queue: remove ──
-      } else if (msgType === "queue_remove") {
+      } else if (msgType === "queue_remove" && canChangeSong) {
         const videoId = String(data.videoId || "");
         room.queue = room.queue.filter(t => t.videoId !== videoId);
         updateRoomPlayback(room);
         broadcastAll(roomId, { type: "queue_update", queue: room.queue });
 
       // ── Queue: skip to next (or clear if queue empty) ──
-      } else if (msgType === "queue_skip") {
+      } else if (msgType === "queue_skip" && canChangeSong) {
         if (room.currentTrack) {
           room.history.unshift(room.currentTrack);
           if (room.history.length > 20) room.history.pop();

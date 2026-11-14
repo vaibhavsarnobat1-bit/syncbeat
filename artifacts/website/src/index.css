@@ -70,6 +70,7 @@
   color-scheme: dark;
 }
 
+
 @layer base {
   * {
     @apply border-border;
@@ -1097,6 +1098,102 @@
   transform: none !important;
 }
 
+/* ─────────────────────────────────────────
+   MAGIC PORTFOLIO — design layer
+   (visual only; no layout/behavioral changes)
+───────────────────────────────────────── */
+
+/* Animated multi-stop gradient text */
+.magic-gradient-text {
+  background: linear-gradient(105deg,
+    hsl(var(--primary)) 0%,
+    #a5f3fc 28%,
+    #818cf8 55%,
+    #c084fc 78%,
+    hsl(var(--primary)) 100%);
+  background-size: 220% 220%;
+  -webkit-background-clip: text;
+  background-clip: text;
+  -webkit-text-fill-color: transparent;
+  color: transparent;
+  animation: magic-gradient-shift 7s ease-in-out infinite;
+}
+
+@keyframes magic-gradient-shift {
+  0% { background-position: 0% 50%; }
+  50% { background-position: 100% 50%; }
+  100% { background-position: 0% 50%; }
+}
+
+/* Soft gradient-border glass card */
+.magic-card {
+  position: relative;
+  background: hsl(var(--card) / 0.72);
+  backdrop-filter: blur(18px);
+  -webkit-backdrop-filter: blur(18px);
+  border: 1px solid transparent;
+  background-clip: padding-box;
+  box-shadow: 0 18px 50px hsl(var(--shadow-color) / 0.28);
+  overflow: hidden;
+}
+
+.magic-card::before {
+  content: '';
+  position: absolute;
+  inset: -1px;
+  z-index: -1;
+  border-radius: inherit;
+  background: linear-gradient(135deg,
+    rgba(0, 212, 212, 0.55),
+    rgba(59, 130, 246, 0.35) 42%,
+    rgba(192, 132, 252, 0.5) 75%,
+    rgba(0, 212, 212, 0.35));
+  animation: magic-border-flow 9s ease-in-out infinite;
+}
+
+@keyframes magic-border-flow {
+  0%, 100% { filter: hue-rotate(0deg); opacity: 0.7; }
+  50% { filter: hue-rotate(24deg); opacity: 1; }
+}
+
+.magic-card:hover {
+  transform: translateY(-4px);
+  box-shadow: 0 26px 60px hsl(var(--shadow-color) / 0.4);
+}
+
+/* Floating aurora orb blobs */
+.magic-orb {
+  position: absolute;
+  border-radius: 9999px;
+  filter: blur(70px);
+  pointer-events: none;
+  will-change: transform;
+  animation: magic-orb-drift 14s ease-in-out infinite alternate;
+}
+
+@keyframes magic-orb-drift {
+  from { transform: translate3d(0, 0, 0) scale(1); }
+  to { transform: translate3d(4%, -6%, 0) scale(1.12); }
+}
+
+/* Fade-up entrance (paired with a delay utility) */
+.magic-reveal {
+  opacity: 0;
+  transform: translateY(26px);
+  animation: magic-fade-up 0.8s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+}
+
+@keyframes magic-fade-up {
+  to { opacity: 1; transform: translateY(0); }
+}
+
+.magic-delay-1 { animation-delay: 0.08s; }
+.magic-delay-2 { animation-delay: 0.16s; }
+.magic-delay-3 { animation-delay: 0.24s; }
+.magic-delay-4 { animation-delay: 0.32s; }
+.magic-delay-5 { animation-delay: 0.4s; }
+.magic-delay-6 { animation-delay: 0.48s; }
+
 @media (prefers-reduced-motion: reduce) {
   *,
   *::before,
@@ -1109,3 +1206,5 @@
     scroll-behavior: auto !important;
   }
 }
+
+

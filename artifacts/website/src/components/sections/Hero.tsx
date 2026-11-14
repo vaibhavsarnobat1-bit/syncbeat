@@ -9,6 +9,8 @@ export function Hero() {
       <div className="absolute inset-0 z-0">
         <div className="absolute top-0 right-0 w-[800px] h-[800px] bg-primary/5 rounded-full blur-[120px] -translate-y-1/2 translate-x-1/3" />
         <div className="absolute bottom-0 left-0 w-[600px] h-[600px] bg-accent/50 rounded-full blur-[100px] translate-y-1/3 -translate-x-1/4" />
+        <div className="magic-orb top-[18%] left-[8%] w-[340px] h-[340px] bg-cyan-400/30" />
+        <div className="magic-orb bottom-[12%] right-[6%] w-[420px] h-[420px] bg-violet-500/30" style={{ animationDelay: '-6s' }} />
       </div>
 
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 relative z-10 w-full">
@@ -28,7 +30,7 @@ export function Hero() {
             
             <h1 className="text-5xl sm:text-6xl lg:text-7xl font-bold tracking-tight text-foreground leading-[1.1] mb-6">
               Elevate your <br/>
-              <span className="text-transparent bg-clip-text bg-gradient-to-r from-primary to-primary/60">
+              <span className="magic-gradient-text">
                 digital presence
               </span>
             </h1>

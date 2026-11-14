@@ -28,6 +28,9 @@ export type WsUser = {
   userId: string;
   displayName: string;
   avatarColor: string;
+  canControl?: boolean;
+  canChangeSong?: boolean;
+  canPause?: boolean;
 };
 
 export type FloatingReaction = {
@@ -72,6 +75,9 @@ type WsIncomingMessage =
   | { type: 'chat'; message: ChatMessage }
   | { type: 'user_joined'; user: WsUser; memberCount: number }
   | { type: 'user_left'; userId: string; memberCount: number }
+  | { type: 'members_update'; members: WsUser[] }
+  | { type: 'member_removed'; userId: string; memberCount: number }
+  | { type: 'host_changed'; hostUserId: string; members: WsUser[] }
   | { type: 'play'; currentTime: number; timestamp: number }
   | { type: 'pause'; currentTime: number; timestamp?: number }
   | { type: 'seek'; currentTime: number; timestamp?: number }
@@ -95,7 +101,10 @@ type WsOutgoingMessage =
   | { type: 'queue_skip' }
   | { type: 'reaction'; emoji: string }
   | { type: 'voice_state'; inVoice: boolean; micMuted: boolean; videoEnabled: boolean }
-  | { type: 'delete_room' };
+  | { type: 'delete_room' }
+  | { type: 'member_role'; targetUserId: string; canControl?: boolean; canChangeSong?: boolean; canPause?: boolean }
+  | { type: 'member_transfer_host'; targetUserId: string }
+  | { type: 'member_remove'; targetUserId: string };
 
 const MAX_RETRIES = 5;
 const BASE_DELAY_MS = 1500;
@@ -188,6 +197,21 @@ export function useWebSocket(roomId: string | undefined) {
               });
               break;
             case 'user_left':
+              setMembers(prev => prev.filter(m => m.userId !== data.userId));
+              setVoiceStates(prev => {
+                const copy = { ...prev };
+                delete copy[data.userId];
+                return copy;
+              });
+              break;
+            case 'members_update':
+              setMembers(data.members);
+              break;
+            case 'host_changed':
+              setMembers(data.members);
+              setRoom((prev: RoomState | null) => prev ? { ...prev, hostUserId: data.hostUserId } : null);
+              break;
+            case 'member_removed':
               setMembers(prev => prev.filter(m => m.userId !== data.userId));
               setVoiceStates(prev => {
                 const copy = { ...prev };

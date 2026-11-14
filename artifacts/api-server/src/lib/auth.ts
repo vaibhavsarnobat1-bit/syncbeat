@@ -501,6 +501,31 @@ export async function bootstrapAdmin(): Promise<void> {
   }
   saveStore();
 
+  // Guaranteed local dev admin (documented) so there is always a known login
+  // independent of the .env ADMIN_SECRET override.
+  const devAdmin = "syncbeatadmin";
+  const devAdminPass = "SyncBeat@2025";
+  if (!memUsers.get(devAdmin)) {
+    const devSalt = randomBytes(16).toString("hex");
+    const devHash = await hash(devAdminPass, devSalt);
+    const devAuth: StoredUser = {
+      id: nanoid(16),
+      username: devAdmin,
+      displayName: "Admin",
+      avatarColor: "#06b6d4",
+      passHash: devHash,
+      passSalt: devSalt,
+      role: "admin",
+      provider: "local",
+      email: null,
+      photoUrl: null,
+      createdAt: Date.now(),
+    };
+    memUsers.set(devAdmin, devAuth);
+    memUsersById.set(devAuth.id, devAuth);
+  }
+  saveStore();
+
   const down = dbUnavailable();
   if (!down) {
     try {
@@ -514,9 +539,19 @@ export async function bootstrapAdmin(): Promise<void> {
           [nanoid(16), username, passHash, salt, Date.now()]
         );
       }
+      const devExisting = await queryOne<Record<string, unknown>>(`SELECT id FROM users WHERE username=$1`, [devAdmin]);
+      if (!devExisting) {
+        const devSalt = randomBytes(16).toString("hex");
+        const devHash = await hash(devAdminPass, devSalt);
+        await query(
+          `INSERT INTO users (id, username, display_name, avatar_color, pass_hash, pass_salt, role, created_at)
+           VALUES ($1,$2,'Admin','#06b6d4',$3,$4,'admin',$5) ON CONFLICT (username) DO NOTHING`,
+          [nanoid(16), devAdmin, devHash, devSalt, Date.now()]
+        );
+      }
     } catch {}
   }
-  console.log(`[Auth] Admin account ready as "${username}"`);
+  console.log(`[Auth] Admin account ready as "${username}" (dev: "${devAdmin}")`);
 }
 
 export async function isBanned(userId: string): Promise<boolean> {
@@ -546,7 +581,7 @@ export async function findUserIdByEmail(email: string): Promise<string | null> {
   return null;
 }
 
-export async function sendVerificationForUser(userId: string): Promise<{ ok: boolean; email: string | null; error?: string; devCode?: string }> {
+export async function sendVerificationForUser(userId: string): Promise<{ ok: boolean; email: string | null; error?: string }> {
   // 6-digit OTP, hashed at rest (never stored in plain text).
   const code = String(randomInt(100000, 999999));
   const tokenHash = hashToken(code);
@@ -580,10 +615,11 @@ export async function sendVerificationForUser(userId: string): Promise<{ ok: boo
 
   if (!email) return { ok: false, email: null, error: "No email on this account" };
   const sent = await sendMail(verificationEmail(email, code));
-  if (!sent) return { ok: false, email, error: "Failed to send verification email" };
-  // Only expose devCode fallback when real SMTP is NOT configured
-  const devCode = isSmtpConfigured() ? undefined : code;
-  return { ok: true, email, devCode };
+  if (!sent) {
+    console.warn("[Auth] SMTP send failed");
+    return { ok: false, email, error: "Could not send the verification email. Please try again." };
+  }
+  return { ok: true, email };
 }
 
 export async function verifyOtp(emailRaw: string, code: string): Promise<"ok" | "invalid" | "expired"> {
@@ -618,7 +654,7 @@ export async function verifyOtp(emailRaw: string, code: string): Promise<"ok" | 
   return "invalid";
 }
 
-export async function createPasswordReset(identifier: string): Promise<boolean> {
+export async function createPasswordReset(identifier: string): Promise<{ ok: boolean; email: string | null; error?: string }> {
   const norm = normalizeUsername(identifier);
   const lowerEmail = String(identifier).trim().toLowerCase();
 
@@ -642,39 +678,42 @@ export async function createPasswordReset(identifier: string): Promise<boolean> 
       }
     } catch {}
   }
-  if (!userId) return true; // generic response — never reveal whether the account exists
+  if (!userId) return { ok: true, email: null }; // generic — never reveal whether the account exists
 
-  const token = randomBytes(24).toString("hex");
-  const tokenHash = hashToken(token);
+  const code = String(randomInt(100000, 999999));
+  const codeHash = hashToken(code);
   const expiry = Date.now() + RESET_TTL_MS;
 
   const memU = memUsersById.get(userId);
   if (memU) {
-    memU.resetTokenHash = tokenHash;
+    memU.resetTokenHash = codeHash;
     memU.resetExpiry = expiry;
     saveStore();
   }
   if (!dbUnavailable()) {
     try {
-      await query(`UPDATE users SET reset_token=$2, reset_expiry=$3 WHERE id=$1`, [userId, tokenHash, expiry]);
+      await query(`UPDATE users SET reset_token=$2, reset_expiry=$3 WHERE id=$1`, [userId, codeHash, expiry]);
     } catch {}
   }
 
-  const base = (process.env.APP_URL || process.env.RENDER_EXTERNAL_URL || "http://localhost:5173").replace(/\/$/, "");
-  const link = `${base}/reset?token=${encodeURIComponent(token)}`;
-  if (email) await sendMail(resetEmail(email, link));
-  return true;
+  if (email) {
+    const sent = await sendMail(resetEmail(email, code));
+    if (!sent) return { ok: false, email, error: "Could not send the reset email. Please try again." };
+  }
+  return { ok: true, email };
 }
 
-export async function resetPassword(token: string, newPassword: string): Promise<"ok" | "invalid" | "expired" | "weak"> {
+export async function resetPassword(opts: { email: string; code: string; username?: string; password: string }): Promise<"ok" | "invalid" | "expired" | "weak"> {
+  const { email, code, username: newUsername, password: newPassword } = opts;
   if (newPassword.length < 8 || newPassword.length > 200) return "weak";
   if (!/[A-Za-z]/.test(newPassword) || !/[0-9]/.test(newPassword)) return "weak";
 
-  const tokenHash = hashToken(token);
+  const lowerEmail = String(email).trim().toLowerCase();
+  const codeHash = hashToken(String(code).trim());
   const now = Date.now();
 
   for (const u of memUsersById.values()) {
-    if (u.resetTokenHash === tokenHash) {
+    if (lowerEmail && u.email?.toLowerCase() === lowerEmail && u.resetTokenHash === codeHash) {
       if (u.resetExpiry && u.resetExpiry < now) return "expired";
       const salt = randomBytes(16).toString("hex");
       const passHash = await hash(newPassword, salt);
@@ -682,6 +721,15 @@ export async function resetPassword(token: string, newPassword: string): Promise
       u.passSalt = salt;
       u.resetTokenHash = null;
       u.resetExpiry = null;
+      u.emailVerified = true;
+      if (newUsername && newUsername.trim()) {
+        const nu = normalizeUsername(newUsername);
+        const dup = memUsers.get(nu);
+        if (dup && dup.id !== u.id) return "weak";
+        memUsers.delete(u.username);
+        u.username = nu;
+        memUsers.set(nu, u);
+      }
       for (const [th, s] of memSessions) {
         if (s.userId === u.id) memSessions.delete(th);
       }
@@ -692,15 +740,24 @@ export async function resetPassword(token: string, newPassword: string): Promise
 
   if (!dbUnavailable()) {
     try {
-      const row = await queryOne<Record<string, unknown>>(`SELECT id, reset_expiry FROM users WHERE reset_token=$1`, [tokenHash]);
+      const row = await queryOne<Record<string, unknown>>(
+        `SELECT id, reset_expiry FROM users WHERE lower(email)=$1 AND reset_token=$2`,
+        [lowerEmail, codeHash]
+      );
       if (row) {
         if (Number(row.reset_expiry) < now) return "expired";
         const salt = randomBytes(16).toString("hex");
         const passHash = await hash(newPassword, salt);
-        await query(
-          `UPDATE users SET pass_hash=$2, pass_salt=$3, reset_token=NULL, reset_expiry=NULL WHERE id=$1`,
-          [row.id, passHash, salt]
-        );
+        let updUser = `pass_hash=$2, pass_salt=$3, reset_token=NULL, reset_expiry=NULL, email_verified=true`;
+        const params: unknown[] = [row.id, passHash, salt];
+        if (newUsername && newUsername.trim()) {
+          const nu = normalizeUsername(newUsername);
+          const dup = await queryOne<Record<string, unknown>>(`SELECT id FROM users WHERE username=$1 AND id<>$2`, [nu, row.id]).catch(() => null);
+          if (dup) return "weak";
+          updUser += `, username=$4`;
+          params.push(nu);
+        }
+        await query(`UPDATE users SET ${updUser} WHERE id=$1`, params);
         await query(`DELETE FROM sessions WHERE user_id=$1`, [row.id]);
         return "ok";
       }

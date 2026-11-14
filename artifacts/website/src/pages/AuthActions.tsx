@@ -105,7 +105,9 @@ export function VerifyPage() {
 export function ResetPage() {
   const search = useSearch();
   const params = useMemo(() => new URLSearchParams(search), [search]);
-  const token = params.get('token') || '';
+  const initialEmail = params.get('email') || '';
+  const [email, setEmail] = useState(initialEmail);
+  const [otp, setOtp] = useState('');
   const [password, setPassword] = useState('');
   const [confirm, setConfirm] = useState('');
   const [error, setError] = useState('');
@@ -115,7 +117,15 @@ export function ResetPage() {
 
   const submit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (busy || !token) return;
+    if (busy) return;
+    if (!email.includes('@')) {
+      setError('Enter your email');
+      return;
+    }
+    if (otp.length !== 6) {
+      setError('Enter the 6-digit code from your email');
+      return;
+    }
     if (password.length < 8 || !/[A-Za-z]/.test(password) || !/[0-9]/.test(password)) {
       setError('Password must be at least 8 characters with a letter and a number');
       return;
@@ -126,12 +136,12 @@ export function ResetPage() {
     }
     setBusy(true);
     setError('');
-    const r = await resetPasswordRequest(token, password);
+    const r = await resetPasswordRequest({ email, code: otp, password });
     setBusy(false);
     if (r.ok) {
       setDone(true);
     } else {
-      setError(r.error || 'This reset link is invalid.');
+      setError(r.error || 'Invalid verification code.');
     }
   };
 
@@ -149,10 +159,26 @@ export function ResetPage() {
       ) : (
         <Centered>
           <KeyRound className="w-10 h-10 text-cyan-300 mx-auto" />
-          <h2 className="mt-3 text-lg font-extrabold text-foreground">Choose a new password</h2>
-          <p className="mt-1 text-sm text-muted-foreground">This link can be used once and expires in 1 hour.</p>
-          {!token && <p className="mt-2 text-xs text-rose-300">Missing reset token.</p>}
+          <h2 className="mt-3 text-lg font-extrabold text-foreground">Reset your password</h2>
+          <p className="mt-1 text-sm text-muted-foreground">Enter your email, the 6-digit code we sent, and a new password.</p>
           <form onSubmit={submit} className="mt-4 w-full space-y-3">
+            <input
+              value={email}
+              onChange={(e) => setEmail(e.target.value)}
+              type="email"
+              autoComplete="email"
+              placeholder="your@email.com"
+              className="w-full px-3.5 py-3 rounded-xl field-surface text-sm"
+            />
+            <input
+              value={otp}
+              onChange={(e) => setOtp(e.target.value.replace(/\D/g, '').slice(0, 6))}
+              inputMode="numeric"
+              autoComplete="one-time-code"
+              placeholder="6-digit code"
+              aria-label="Verification code"
+              className="w-full px-3.5 py-3 rounded-xl field-surface text-sm text-center tracking-[0.4em]"
+            />
             <input
               value={password}
               onChange={(e) => setPassword(e.target.value)}
@@ -173,7 +199,7 @@ export function ResetPage() {
             {info && <p className="text-xs font-semibold text-emerald-300">{info}</p>}
             <button
               type="submit"
-              disabled={busy || !token}
+              disabled={busy}
               className="w-full px-4 py-3 rounded-xl action-primary text-sm font-bold disabled:opacity-60 cursor-pointer"
             >
               {busy ? 'Saving…' : 'Reset password'}

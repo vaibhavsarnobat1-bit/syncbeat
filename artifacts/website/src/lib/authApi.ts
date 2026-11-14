@@ -42,7 +42,7 @@ export async function registerRequest(
   username: string,
   password: string,
   email?: string
-): Promise<{ user?: SessionUser; needsVerification: boolean; devCode?: string }> {
+): Promise<{ user?: SessionUser; needsVerification: boolean }> {
   const res = await fetch("/api/auth/register", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
@@ -57,7 +57,6 @@ export async function registerRequest(
   return {
     user: (data?.user as SessionUser) || undefined,
     needsVerification: data?.needsVerification === true,
-    devCode: data?.devCode,
   };
 }
 
@@ -74,34 +73,34 @@ export async function verifyEmailRequest(email: string, otp: string): Promise<{ 
   return { ok: res.ok, error: data?.error, user: data?.user };
 }
 
-export async function resendVerificationRequest(email: string): Promise<{ ok: boolean; error?: string; devCode?: string }> {
+export async function resendVerificationRequest(email: string): Promise<{ ok: boolean; error?: string }> {
   const res = await fetch("/api/auth/resend-verification", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ email }),
   });
   const data = await res.json().catch(() => ({}));
-  return { ok: res.ok, error: data?.error, devCode: data?.devCode };
+  return { ok: res.ok, error: data?.error };
 }
 
-export async function forgotPasswordRequest(identifier: string): Promise<{ ok: boolean; error?: string }> {
+export async function forgotPasswordRequest(identifier: string): Promise<{ ok: boolean; found?: boolean; email?: string | null; error?: string }> {
   const res = await fetch("/api/auth/forgot-password", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ identifier }),
   });
   const data = await res.json().catch(() => ({}));
-  return { ok: res.ok, error: data?.error };
+  return { ok: res.ok, found: data?.found, email: data?.email, error: data?.error };
 }
 
-export async function resetPasswordRequest(token: string, password: string): Promise<{ ok: boolean; error?: string }> {
+export async function resetPasswordRequest(data: { email: string; code: string; username?: string; password: string }): Promise<{ ok: boolean; error?: string }> {
   const res = await fetch("/api/auth/reset-password", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ token, password }),
+    body: JSON.stringify(data),
   });
-  const data = await res.json().catch(() => ({}));
-  return { ok: res.ok, error: data?.error };
+  const res2 = await res.json().catch(() => ({}));
+  return { ok: res.ok, error: res2?.error };
 }
 
 export async function logoutRequest(): Promise<void> {

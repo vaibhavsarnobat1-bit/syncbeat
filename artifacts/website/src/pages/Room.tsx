@@ -17,7 +17,7 @@ import {
   FolderOpen, Pause, Volume2, TrendingUp, LogOut, Plus,
   Sparkles, PhoneCall, Mic, MicOff, PhoneOff, ListMusic,
   Library, Globe, Flame, RefreshCw, Smartphone, Check,
-  Video, VideoOff
+  Video, VideoOff, Crown, Settings, Settings2
 } from 'lucide-react';
 import { shareOrCopy, copyToClipboard } from '@/lib/utils';
 import { format } from 'date-fns';
@@ -217,6 +217,7 @@ export default function RoomPage() {
   const [copied, setCopied] = useState(false);
   const [showChat, setShowChat] = useState(true); // Mobile overlay toggle
   const [showMembers, setShowMembers] = useState(false);
+  const [showSettings, setShowSettings] = useState(false);
   const [sidebarTab, setSidebarTab] = useState<'chat' | 'spotify'>('chat');
   const [trendingSongs, setTrendingSongs] = useState<SearchResult[]>([]);
   const [syncNote, setSyncNote] = useState<string | null>(null);
@@ -340,6 +341,9 @@ export default function RoomPage() {
 
   const activeRoom = (room || (initialRoom as unknown as RoomState) || fallbackRoom) as RoomState;
   const isHost = activeRoom?.hostUserId === user?.userId;
+   const myControl = isHost || members.some((m) => m.userId === user?.userId && (m.canChangeSong || m.canPause));
+  const myCanPause = isHost || members.some((m) => m.userId === user?.userId && m.canPause);
+  const myCanChangeSong = isHost || members.some((m) => m.userId === user?.userId && m.canChangeSong);
   // Server closes the socket with this message when the room id no longer resolves,
   // which is the one case where retrying sync is pointless instead of just slow.
   const roomGone = !!wsError && /room not found/i.test(wsError);
@@ -773,6 +777,7 @@ export default function RoomPage() {
         duration: result.duration,
       });
     } else {
+      if (!myCanChangeSong) return;
       // ⚡ INSTANT LOCAL TRIGGER: don't wait for server roundtrip
       try {
         playerControlRef.current?.playVideo();
@@ -792,8 +797,8 @@ export default function RoomPage() {
     }
   };
 
-  const handleQueueSkip = () => send({ type: 'queue_skip' });
-  const handleQueueRemove = (videoId: string) => send({ type: 'queue_remove', videoId });
+  const handleQueueSkip = () => { if (!myCanChangeSong) return; send({ type: 'queue_skip' }); };
+  const handleQueueRemove = (videoId: string) => { if (!myCanChangeSong) return; send({ type: 'queue_remove', videoId }); };
   const handleReaction = (emoji: string) => send({ type: 'reaction', emoji });
 
   // 🔄 Automatic Error 150/101 Recovery Engine:
@@ -833,6 +838,7 @@ export default function RoomPage() {
 
   const handleTogglePlayback = () => {
     if (!activeRoom?.currentTrack) return;
+    if (!myCanPause) return;
     const usingDevice = activeRoom.currentTrack.source === 'device';
     const curTime = usingDevice
       ? (localAudioEl?.currentTime ?? activeRoom.currentTime ?? 0)
@@ -937,6 +943,7 @@ export default function RoomPage() {
 
   /** Plays a device song for the whole room: instantly here, then broadcast as the room track. */
   const playDeviceSong = async (file: DeviceFile) => {
+    if (!myCanChangeSong) return;
     if (!localAudioEl) return;
     const mediaId = await uploadDeviceSong(file);
     if (!mediaId) return;
@@ -1296,8 +1303,10 @@ export default function RoomPage() {
                     {members.map((m) => {
                       const isYou = m.userId === user?.userId;
                       const voice = voiceStates[m.userId];
+                      const isOtherHost = m.userId === activeRoom.hostUserId;
+                      const otherMember = m.userId !== user?.userId;
                       return (
-                        <div key={m.userId} className="flex items-center gap-2.5 px-3 py-2">
+                        <div key={m.userId} className="flex items-center gap-2 px-3 py-2">
                           <span
                             className="w-6 h-6 rounded-full flex items-center justify-center text-[10px] font-black text-white shrink-0"
                             style={{ backgroundColor: m.avatarColor }}
@@ -1307,7 +1316,11 @@ export default function RoomPage() {
                           <div className="min-w-0 flex-1">
                             <p className="text-[11px] font-bold text-white/85 truncate">{m.displayName}</p>
                             <p className="text-[9px] text-muted-foreground font-medium truncate">
-                              {m.userId === activeRoom.hostUserId ? 'Room host' : isYou ? 'You' : 'Listening'}
+                              {isOtherHost ? '👑 Room host'
+                                : m.canChangeSong && m.canPause ? '🎛️ Songs + play/pause'
+                                : m.canChangeSong ? '🎵 Can change songs'
+                                : m.canPause ? '⏯️ Can play/pause'
+                                : isYou ? 'You' : 'Listening'}
                             </p>
                           </div>
                           {voice?.inVoice && (voice?.micMuted ? (
@@ -1315,6 +1328,49 @@ export default function RoomPage() {
                           ) : (
                             <Mic className="w-3 h-3 text-cyan-400/80 shrink-0" />
                           ))}
+                          {isHost && otherMember && !isOtherHost && (
+                            <div className="flex items-center gap-1 shrink-0">
+                              {/* Song-change permission */}
+                              <button
+                                onClick={() => send({ type: 'member_role', targetUserId: m.userId, canChangeSong: !m.canChangeSong })}
+                                title={m.canChangeSong ? 'Revoke change-songs permission' : 'Allow this member to change songs'}
+                                className={`p-1 rounded-md border transition-colors ${
+                                  m.canChangeSong
+                                    ? 'bg-cyan-500/20 border-cyan-400/40 text-cyan-300'
+                                    : 'bg-white/5 border-white/10 text-white/40 hover:text-cyan-300'
+                                }`}
+                              >
+                                {m.canChangeSong ? <Check className="w-3 h-3" /> : <Music2 className="w-3 h-3" />}
+                              </button>
+                              {/* Play/pause permission */}
+                              <button
+                                onClick={() => send({ type: 'member_role', targetUserId: m.userId, canPause: !m.canPause })}
+                                title={m.canPause ? 'Revoke play/pause permission' : 'Allow this member to play/pause'}
+                                className={`p-1 rounded-md border transition-colors ${
+                                  m.canPause
+                                    ? 'bg-emerald-500/20 border-emerald-400/40 text-emerald-300'
+                                    : 'bg-white/5 border-white/10 text-white/40 hover:text-emerald-300'
+                                }`}
+                              >
+                                {m.canPause ? <Check className="w-3 h-3" /> : <Pause className="w-3 h-3" />}
+                              </button>
+                              {/* Transfer host */}
+                              <button
+                                onClick={() => { if (confirm(`Make ${m.displayName} the new host?`)) send({ type: 'member_transfer_host', targetUserId: m.userId }); }}
+                                title="Make host"
+                                className="p-1 rounded-md border border-white/10 bg-white/5 text-yellow-300/70 hover:text-yellow-300 hover:bg-yellow-500/10 transition-colors"
+                              >
+                                <Crown className="w-3 h-3" />
+                              </button>
+                              <button
+                                onClick={() => { if (confirm(`Remove ${m.displayName} from this room?`)) send({ type: 'member_remove', targetUserId: m.userId }); }}
+                                title="Remove member"
+                                className="p-1 rounded-md border border-white/10 bg-white/5 text-white/40 hover:text-red-400 hover:bg-red-500/10 transition-colors"
+                              >
+                                <X className="w-3 h-3" />
+                              </button>
+                            </div>
+                          )}
                         </div>
                       );
                     })}
@@ -1334,6 +1390,23 @@ export default function RoomPage() {
               )}
             </AnimatePresence>
           </div>
+
+          {/* Room Settings — host only */}
+          {isHost && (
+            <button
+              type="button"
+              onClick={() => setShowSettings((v) => !v)}
+              className="hidden sm:flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-bold text-white/80 transition-all duration-300 hover:-translate-y-0.5 hover:text-white"
+              style={{
+                background: 'linear-gradient(160deg, rgba(59,130,246,0.22), rgba(30,58,138,0.14))',
+                border: '1px solid rgba(96,165,250,0.32)',
+              }}
+              title="Room settings — manage members, permissions and room"
+            >
+              <Settings className="w-3.5 h-3.5" />
+              Settings
+            </button>
+          )}
 
           {/* Close Room — host only */}
           {isHost && (
@@ -1368,6 +1441,209 @@ export default function RoomPage() {
           </button>
         </div>
       </header>
+
+      {/* ⚙️ Room Settings Drawer (host only) — right side panel */}
+      <AnimatePresence>
+        {showSettings && isHost && (
+          <>
+            <motion.div
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              onClick={() => setShowSettings(false)}
+              className="fixed inset-0 z-40 bg-black/50 backdrop-blur-sm"
+            />
+            <motion.div
+              initial={{ x: '100%' }}
+              animate={{ x: 0 }}
+              exit={{ x: '100%' }}
+              transition={{ type: 'spring', damping: 28, stiffness: 260 }}
+              className="fixed right-0 top-0 bottom-0 z-50 w-full max-w-md flex flex-col border-l border-white/10 bg-[#080c18]/98 backdrop-blur-2xl"
+              style={{ boxShadow: '-20px 0 50px rgba(0,0,0,0.6)' }}
+            >
+              {/* Drawer header */}
+              <div className="flex items-center justify-between px-5 py-4 border-b border-white/8">
+                <div className="flex items-center gap-2.5">
+                  <div
+                    className="w-9 h-9 rounded-xl flex items-center justify-center"
+                    style={{
+                      background: 'linear-gradient(140deg, rgba(59,130,246,0.3), rgba(0,212,212,0.2))',
+                      border: '1px solid rgba(96,165,250,0.35)',
+                    }}
+                  >
+                    <Settings2 className="w-4.5 h-4.5 text-cyan-300" />
+                  </div>
+                  <div>
+                    <p className="text-sm font-black text-white">Room Settings</p>
+                    <p className="text-[10px] text-muted-foreground font-medium">Manage members, permissions & room</p>
+                  </div>
+                </div>
+                <button
+                  onClick={() => setShowSettings(false)}
+                  className="p-2 rounded-lg bg-white/5 hover:bg-white/10 border border-white/10 text-white/60 hover:text-white transition-colors"
+                  aria-label="Close settings"
+                >
+                  <X className="w-4 h-4" />
+                </button>
+              </div>
+
+              <div className="flex-1 overflow-y-auto scrollbar-hide divide-y divide-white/5">
+                {/* ── Members section ── */}
+                <section className="p-5">
+                  <div className="flex items-center justify-between mb-3">
+                    <h3 className="text-[11px] font-black uppercase tracking-[0.18em] text-white/50 flex items-center gap-2">
+                      <Users className="w-3.5 h-3.5 text-cyan-400" /> Members
+                    </h3>
+                    <span className="text-[10px] font-bold text-cyan-400 bg-cyan-500/10 border border-cyan-400/25 px-2 py-0.5 rounded-full">
+                      {members.length}
+                    </span>
+                  </div>
+
+                  <div className="space-y-2">
+                    {members.map((m) => {
+                      const isYou = m.userId === user?.userId;
+                      const isOtherHost = m.userId === activeRoom.hostUserId;
+                      const otherMember = m.userId !== user?.userId;
+                      const voice = voiceStates[m.userId];
+                      return (
+                        <div
+                          key={m.userId}
+                          className="rounded-xl border border-white/8 bg-white/[0.02] p-2.5"
+                        >
+                          <div className="flex items-center gap-2.5">
+                            <span
+                              className="w-8 h-8 rounded-full flex items-center justify-center text-[11px] font-black text-white shrink-0"
+                              style={{ backgroundColor: m.avatarColor }}
+                            >
+                              {m.displayName.charAt(0).toUpperCase()}
+                            </span>
+                            <div className="min-w-0 flex-1">
+                              <p className="text-xs font-bold text-white/85 truncate">
+                                {m.displayName} {isYou && <span className="text-cyan-400">(you)</span>}
+                              </p>
+                              <p className="text-[10px] text-muted-foreground font-medium truncate">
+                                {isOtherHost ? '👑 Room host'
+                                  : m.canChangeSong && m.canPause ? '🎛️ Songs + play/pause'
+                                  : m.canChangeSong ? '🎵 Can change songs'
+                                  : m.canPause ? '⏯️ Can play/pause'
+                                  : 'Listening'}
+                              </p>
+                            </div>
+                            {voice?.inVoice && (voice?.micMuted ? (
+                              <MicOff className="w-3.5 h-3.5 text-red-400/80 shrink-0" />
+                            ) : (
+                              <Mic className="w-3.5 h-3.5 text-cyan-400/80 shrink-0" />
+                            ))}
+                          </div>
+
+                          {isHost && otherMember && !isOtherHost && (
+                            <div className="mt-2.5 pt-2.5 border-t border-white/6 flex items-center gap-1.5">
+                              {/* Song-change permission */}
+                              <button
+                                onClick={() => send({ type: 'member_role', targetUserId: m.userId, canChangeSong: !m.canChangeSong })}
+                                title={m.canChangeSong ? 'Revoke change-songs permission' : 'Allow this member to change songs'}
+                                className={`flex-1 flex items-center justify-center gap-1.5 py-1.5 rounded-lg border text-[10px] font-bold transition-colors ${
+                                  m.canChangeSong
+                                    ? 'bg-cyan-500/20 border-cyan-400/40 text-cyan-300'
+                                    : 'bg-white/5 border-white/10 text-white/40 hover:text-cyan-300'
+                                }`}
+                              >
+                                {m.canChangeSong ? <Check className="w-3 h-3" /> : <Music2 className="w-3 h-3" />}
+                                {m.canChangeSong ? 'Songs On' : 'Songs'}
+                              </button>
+                              {/* Play/pause permission */}
+                              <button
+                                onClick={() => send({ type: 'member_role', targetUserId: m.userId, canPause: !m.canPause })}
+                                title={m.canPause ? 'Revoke play/pause permission' : 'Allow this member to play/pause'}
+                                className={`flex-1 flex items-center justify-center gap-1.5 py-1.5 rounded-lg border text-[10px] font-bold transition-colors ${
+                                  m.canPause
+                                    ? 'bg-emerald-500/20 border-emerald-400/40 text-emerald-300'
+                                    : 'bg-white/5 border-white/10 text-white/40 hover:text-emerald-300'
+                                }`}
+                              >
+                                {m.canPause ? <Check className="w-3 h-3" /> : <Pause className="w-3 h-3" />}
+                                {m.canPause ? 'Pause On' : 'Pause'}
+                              </button>
+                              {/* Transfer host */}
+                              <button
+                                onClick={() => { if (confirm(`Make ${m.displayName} the new host?`)) send({ type: 'member_transfer_host', targetUserId: m.userId }); }}
+                                title="Make host"
+                                className="flex items-center justify-center gap-1 py-1.5 px-2 rounded-lg border border-white/10 bg-white/5 text-yellow-300/70 hover:text-yellow-300 hover:bg-yellow-500/10 transition-colors"
+                              >
+                                <Crown className="w-3 h-3" />
+                              </button>
+                              {/* Remove member */}
+                              <button
+                                onClick={() => { if (confirm(`Remove ${m.displayName} from this room?`)) send({ type: 'member_remove', targetUserId: m.userId }); }}
+                                title="Remove member"
+                                className="flex items-center justify-center gap-1 py-1.5 px-2 rounded-lg border border-white/10 bg-white/5 text-white/40 hover:text-red-400 hover:bg-red-500/10 transition-colors"
+                              >
+                                <X className="w-3 h-3" />
+                              </button>
+                            </div>
+                          )}
+                        </div>
+                      );
+                    })}
+                    {members.length === 0 && (
+                      <p className="text-[11px] text-muted-foreground">Nobody else has joined yet.</p>
+                    )}
+                  </div>
+
+                  <button
+                    onClick={() => copyInvite()}
+                    className="mt-3 w-full flex items-center justify-center gap-1.5 py-2 rounded-lg bg-cyan-500/10 hover:bg-cyan-500/20 text-cyan-400 border border-cyan-400/25 text-xs font-bold transition-colors"
+                  >
+                    <Plus className="w-3.5 h-3.5" /> Invite more people
+                  </button>
+                </section>
+
+                {/* ── Room permissions section ── */}
+                <section className="p-5">
+                  <h3 className="text-[11px] font-black uppercase tracking-[0.18em] text-white/50 mb-3">Room permissions</h3>
+                  <div className="space-y-2">
+                    <div className="flex items-center justify-between rounded-xl border border-white/8 bg-white/[0.02] p-3">
+                      <div className="flex items-center gap-2.5">
+                        <Music2 className="w-4 h-4 text-cyan-400" />
+                        <div>
+                          <p className="text-xs font-bold text-white/85">Allow song changes</p>
+                          <p className="text-[10px] text-muted-foreground">Members with this permission can change/skip songs</p>
+                        </div>
+                      </div>
+                    </div>
+                    <div className="flex items-center justify-between rounded-xl border border-white/8 bg-white/[0.02] p-3">
+                      <div className="flex items-center gap-2.5">
+                        <Pause className="w-4 h-4 text-emerald-400" />
+                        <div>
+                          <p className="text-xs font-bold text-white/85">Allow play/pause</p>
+                          <p className="text-[10px] text-muted-foreground">Members with this permission can play & pause</p>
+                        </div>
+                      </div>
+                    </div>
+                    <div className="rounded-xl border border-white/8 bg-white/[0.02] p-3 flex items-start gap-2.5">
+                      <span className="text-base">👑</span>
+                      <p className="text-[11px] text-muted-foreground">
+                        Permissions are granted per-member from the list above. Only the host can manage them.
+                      </p>
+                    </div>
+                  </div>
+                </section>
+
+                {/* ── Room actions section ── */}
+                <section className="p-5">
+                  <h3 className="text-[11px] font-black uppercase tracking-[0.18em] text-white/50 mb-3">Room actions</h3>
+                  <button
+                    onClick={() => { if (confirm('Close this room? All members will be disconnected.')) handleCloseRoom(); }}
+                    className="w-full flex items-center justify-center gap-2 py-2.5 rounded-xl text-xs font-bold text-red-300 border border-red-400/30 bg-red-500/10 hover:bg-red-500/20 transition-colors"
+                  >
+                    <LogOut className="w-3.5 h-3.5" /> End session for all users
+                  </button>
+                </section>
+              </div>
+            </motion.div>
+          </>
+        )}
+      </AnimatePresence>
 
       {/* Offline Alert Banner */}
       {!isOnline && (

@@ -123,7 +123,6 @@ router.post("/register", async (req: Request, res: Response) => {
       res.status(200).json({
         user: { id: userId, username, email: sent.email || emailInput, emailVerified: false },
         needsVerification: true,
-        devCode: sent.devCode,
       });
       return;
     }
@@ -142,7 +141,6 @@ router.post("/register", async (req: Request, res: Response) => {
           emailVerified: false,
         },
         needsVerification: true,
-        devCode: sent.devCode, // dev mode only (no SMTP)
       });
       return;
     }
@@ -288,7 +286,7 @@ router.post("/resend-verification", async (req: Request, res: Response) => {
     return;
   }
   const sent = await sendVerificationForUser(userId);
-  res.json({ ok: true, devCode: sent.devCode }); // dev mode only
+  res.json({ ok: true, error: sent.ok ? undefined : sent.error });
 });
 
 router.post("/forgot-password", async (req: Request, res: Response) => {
@@ -301,32 +299,36 @@ router.post("/forgot-password", async (req: Request, res: Response) => {
     res.status(429).json({ error: "Too many attempts. Try again in a few minutes." });
     return;
   }
-  await createPasswordReset(identifier);
-  // Always return the same message so attackers cannot tell if an account exists.
-  res.json({ ok: true });
+  const result = await createPasswordReset(identifier);
+  // Reveal the registered email when the identifier matches an account so the
+  // reset form can show which address the code was sent to. When nothing
+  // matches we still return ok:true (found:false) to avoid probing exploits.
+  res.json({ ok: true, found: !!result.email, email: result.email ?? null, error: result.error });
 });
 
 router.post("/reset-password", async (req: Request, res: Response) => {
-  const token = String(req.body?.token ?? "");
+  const email = String(req.body?.email ?? "");
+  const code = String(req.body?.code ?? req.body?.token ?? "");
+  const username = String(req.body?.username ?? "");
   const password = String(req.body?.password ?? "");
-  if (!token || !password) {
-    res.status(400).json({ error: "Token and new password are required" });
+  if (!email || !code || !password) {
+    res.status(400).json({ error: "Email, verification code and new password are required" });
     return;
   }
-  const status = await resetPassword(token, password);
+  const status = await resetPassword({ email, code, username, password });
   if (status === "ok") {
     res.json({ ok: true });
     return;
   }
   if (status === "expired") {
-    res.status(410).json({ error: "This reset link has expired. Request a new one." });
+    res.status(410).json({ error: "This reset code has expired. Request a new one." });
     return;
   }
   if (status === "weak") {
     res.status(400).json({ error: "Password must be at least 8 characters with a letter and a number" });
     return;
   }
-  res.status(400).json({ error: "This reset link is invalid." });
+  res.status(400).json({ error: "Incorrect or invalid verification code." });
 });
 
 export default router;
