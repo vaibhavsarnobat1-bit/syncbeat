@@ -12,6 +12,7 @@ import { AppDownloadSection } from '@/components/AppDownloadSection';
 import { AppDownloadModal } from '@/components/AppDownloadModal';
 import { HeroMusicScene3D } from '@/components/3d/HeroMusicScene3D';
 import { BrandMark } from '@/components/BrandMark';
+import { ThemeToggle } from '@/components/ThemeToggle';
 
 const HIGHLIGHT_FEATURES = [
   {
@@ -322,6 +323,7 @@ export default function Home() {
 
           {/* Action Buttons */}
           <div className="flex items-center gap-2 sm:gap-2.5">
+            <ThemeToggle />
             <button
               onClick={() => setShowDownloadModal(true)}
               className="inline-flex items-center gap-1.5 px-2.5 sm:px-3 py-2 rounded-full text-xs font-bold text-cyan-300 bg-cyan-500/10 hover:bg-cyan-500/20 border border-cyan-500/30 transition-all duration-200 cursor-pointer"

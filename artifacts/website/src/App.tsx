@@ -4,6 +4,7 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { Toaster } from "@/components/ui/toaster";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import SplashScreen from "@/components/SplashScreen";
+import { FloatingThemeToggle, getInitialTheme, applyTheme } from "@/components/ThemeToggle";
 import { useAuthStore } from "@/lib/store";
 import { refreshSession } from "@/lib/authApi";
 
@@ -80,6 +81,8 @@ export default function App() {
   const [splashDone, setSplashDone] = useState(false);
 
   useEffect(() => {
+    const initialTheme = getInitialTheme();
+    applyTheme(initialTheme);
     registerSW();
     requestNotificationPermission();
     void refreshSession();
@@ -94,6 +97,7 @@ export default function App() {
         <WouterRouter base={import.meta.env.BASE_URL.replace(/\/$/, "")}>
           <Router />
         </WouterRouter>
+        <FloatingThemeToggle />
         <Toaster />
       </TooltipProvider>
     </QueryClientProvider>

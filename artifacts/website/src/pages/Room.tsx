@@ -28,6 +28,7 @@ import { Card3DTilt } from '@/components/3d/Card3DTilt';
 import { TrackDeck } from '@/components/room/TrackDeck';
 import { FlapText } from '@/components/room/FlapText';
 import { ShareRoomTile } from '@/components/room/ShareRoomTile';
+import { ThemeToggle } from '@/components/ThemeToggle';
 
 /** Nebula's home hue — everything else is expressed as a shift away from it. */
 const BASE_HUE = 189;
@@ -1239,6 +1240,7 @@ export default function RoomPage() {
         </div>
 
         <div className="flex items-center gap-2 shrink-0">
+          <ThemeToggle />
           {/* Invite tile: code + share + QR in one unit */}
           <ShareRoomTile
             roomName={activeRoom.name || 'Music Room'}

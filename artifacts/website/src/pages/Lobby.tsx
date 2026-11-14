@@ -13,6 +13,7 @@ import { BrandMark } from '@/components/BrandMark';
 import { Card3DTilt } from '@/components/3d/Card3DTilt';
 import { CreatorSignature } from '@/components/layout/CreatorSignature';
 import { AppDownloadModal } from '@/components/AppDownloadModal';
+import { ThemeToggle } from '@/components/ThemeToggle';
 import { shareOrCopy } from '@/lib/utils';
 
 function WaveVisualizer({ bars = 7 }: { bars?: number }) {
@@ -476,6 +477,7 @@ export default function Lobby() {
           </div>
 
           <div className="flex items-center gap-2 shrink-0">
+            <ThemeToggle />
             {/* Install App QR Code */}
             <button
               onClick={() => setShowDownloadModal(true)}

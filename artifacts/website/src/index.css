@@ -35,7 +35,8 @@
   --radius-2xl: calc(var(--radius) + 8px);
 }
 
-:root {
+:root,
+html.dark {
   /* Hallmark-informed polish: quieter surfaces, a single cyan accent, existing layout. */
   --background: 205 24% 5%;
   --foreground: 180 12% 94%;
@@ -68,6 +69,42 @@
   --app-font-display: 'Outfit', system-ui, sans-serif;
   --radius: 0.75rem;
   color-scheme: dark;
+}
+
+html.light,
+.light {
+  /* Clean White / Light Mode Palette */
+  --background: 210 40% 98%;
+  --foreground: 222 47% 11%;
+  --border: 214 32% 88%;
+  --card: 0 0% 100%;
+  --card-foreground: 222 47% 11%;
+  --card-border: 214 32% 88%;
+  --popover: 0 0% 100%;
+  --popover-foreground: 222 47% 11%;
+  --popover-border: 214 32% 88%;
+  --primary: 187 90% 36%;
+  --primary-foreground: 0 0% 100%;
+  --secondary: 210 30% 94%;
+  --secondary-foreground: 222 47% 11%;
+  --muted: 210 30% 94%;
+  --muted-foreground: 215 16% 45%;
+  --accent: 187 85% 42%;
+  --accent-foreground: 0 0% 100%;
+  --destructive: 0 84% 60%;
+  --destructive-foreground: 0 0% 98%;
+  --input: 214 30% 82%;
+  --ring: 187 90% 36%;
+  --surface-field: 0 0% 100%;
+  --surface-hover: 210 30% 93%;
+  --primary-hover: 187 90% 30%;
+  --shadow-color: 215 25% 40%;
+  --surface-shadow: 0 10px 30px -5px rgba(15, 23, 42, 0.08);
+  --button-outline: hsl(var(--border));
+  --app-font-sans: 'Plus Jakarta Sans', system-ui, sans-serif;
+  --app-font-display: 'Outfit', system-ui, sans-serif;
+  --radius: 0.75rem;
+  color-scheme: light;
 }
 
 
@@ -1206,5 +1243,118 @@
     scroll-behavior: auto !important;
   }
 }
+
+/* ──────────────────────────────────────────────────────────────────────────
+   WHITE / LIGHT MODE OVERRIDES
+   Ensures every page (Home, Lobby, Room, Login, Admin, Download) adapts
+   cleanly when user switches to White / Light Mode!
+   ────────────────────────────────────────────────────────────────────────── */
+html.light,
+html.light body {
+  background-color: #f8fafc !important;
+  color: #0f172a !important;
+}
+
+html.light [class*="bg-[#05070e]"],
+html.light [class*="bg-[#040711]"],
+html.light [class*="bg-[#050814]"],
+html.light [class*="bg-[#06040f]"],
+html.light [class*="bg-[#040814]"],
+html.light [class*="bg-[#030712]"] {
+  background-color: #f8fafc !important;
+  color: #0f172a !important;
+}
+
+html.light [class*="bg-[#070d1c]"],
+html.light [class*="bg-[#080d1e]"],
+html.light [class*="bg-[#090d1d]"],
+html.light [class*="bg-[#090e20]"],
+html.light [class*="bg-[#090f20]"],
+html.light [class*="bg-[#0b0e1b]"],
+html.light [class*="bg-[#0b0f1c]"],
+html.light [class*="bg-[#0d1525]"],
+html.light [class*="bg-[#080c18]"],
+html.light [class*="bg-[#070a16]"],
+html.light [class*="bg-[#090b14]"],
+html.light [class*="bg-[#050810]"],
+html.light [class*="bg-[#03050a]"] {
+  background-color: #ffffff !important;
+  color: #0f172a !important;
+  border-color: #e2e8f0 !important;
+}
+
+html.light .surface-card,
+html.light .glass-card,
+html.light .glass-panel {
+  background: rgba(255, 255, 255, 0.95) !important;
+  border-color: #e2e8f0 !important;
+  color: #0f172a !important;
+  box-shadow: 0 10px 30px rgba(15, 23, 42, 0.08) !important;
+}
+
+html.light .surface-header {
+  background: rgba(255, 255, 255, 0.92) !important;
+  border-color: #e2e8f0 !important;
+  color: #0f172a !important;
+}
+
+html.light .field-surface,
+html.light input:not([type="checkbox"]):not([type="radio"]),
+html.light textarea {
+  background-color: #ffffff !important;
+  color: #0f172a !important;
+  border-color: #cbd5e1 !important;
+}
+
+html.light .text-white {
+  color: #0f172a !important;
+}
+
+html.light .text-slate-400,
+html.light .text-slate-500,
+html.light .text-muted-foreground {
+  color: #64748b !important;
+}
+
+html.light .text-cyan-100,
+html.light .text-cyan-200,
+html.light .text-cyan-300 {
+  color: #0e7490 !important;
+}
+
+html.light .border-white\/\[0\.08\],
+html.light .border-white\/\[0\.12\],
+html.light .border-white\/6,
+html.light .border-white\/8,
+html.light .border-white\/10,
+html.light .border-white\/12,
+html.light .border-white\/15,
+html.light .border-white\/20 {
+  border-color: #e2e8f0 !important;
+}
+
+html.light .bg-black\/10,
+html.light .bg-black\/20,
+html.light .bg-black\/25,
+html.light .bg-black\/30,
+html.light .bg-black\/40,
+html.light .bg-black\/50,
+html.light .bg-black\/60 {
+  background-color: rgba(241, 245, 249, 0.8) !important;
+}
+
+html.light .bg-black {
+  background-color: #f1f5f9 !important;
+}
+
+html.light .app-bg {
+  background-color: #f8fafc !important;
+}
+
+html.light .app-bg::before {
+  opacity: 0.18;
+  filter: invert(1);
+}
+
 
 

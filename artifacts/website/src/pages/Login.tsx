@@ -6,6 +6,7 @@ import {
 import { useAuthStore } from '@/lib/store';
 import { AuthError, loginRequest, registerRequest, forgotPasswordRequest, resetPasswordRequest, resendVerificationRequest, verifyEmailRequest } from '@/lib/authApi';
 import { BrandMark } from '@/components/BrandMark';
+import { ThemeToggle } from '@/components/ThemeToggle';
 import { ElementsCollection } from '@designcodeio/threeui';
 import '@designcodeio/threeui/style.css';
 
@@ -370,6 +371,7 @@ export default function Login() {
           </button>
         </div>
         <div className="pointer-events-auto flex items-center gap-2.5">
+          <ThemeToggle />
           <div className="hidden sm:flex items-center gap-2 px-3 py-1.5 rounded-full surface-header backdrop-blur-xl">
             <BrandMark size={18} title="SyncBeat logo" />
             <span className="text-xs font-semibold tracking-wide text-foreground">SyncBeat</span>
