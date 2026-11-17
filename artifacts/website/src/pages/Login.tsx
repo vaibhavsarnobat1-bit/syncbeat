@@ -8,8 +8,7 @@ import { AuthError, loginRequest, registerRequest, forgotPasswordRequest, resetP
 import { BrandMark } from '@/components/BrandMark';
 import { ThemeToggle } from '@/components/ThemeToggle';
 import { InputOTP, InputOTPGroup, InputOTPSlot } from '@/components/ui/input-otp';
-import { ElementsCollection } from '@designcodeio/threeui';
-import '@designcodeio/threeui/style.css';
+
 
 const LAST_USERNAME_KEY = 'sb_last_username';
 const NAME_PATTERN = /^[a-z0-9_.-]{3,24}$/;
@@ -317,7 +316,9 @@ export default function Login() {
         setInfo(`A 6-digit verification code has been sent to ${targetEmail || 'your email'}. Enter it below to sign in.`);
       } else {
         const message = err instanceof Error ? err.message : 'Please try again';
-        if (mode === 'signup' && /taken|already/i.test(message)) {
+        if (mode === 'signup' && /email.*already|already.*email/i.test(message)) {
+          setError('This email is already registered. Switch to Sign in or reset your password.');
+        } else if (mode === 'signup' && /taken|already/i.test(message)) {
           setError('That username is already registered. Pick a suggestion below, or switch to Sign in if it is your account.');
         } else {
           setError(message);
@@ -353,14 +354,12 @@ export default function Login() {
 
   return (
     <div className="relative w-full min-h-screen flex items-center justify-center p-4 overflow-hidden bg-background text-foreground select-none">
-      <div className="fixed inset-0 z-0" style={{ width: '100%', height: '100vh' }}>
-        <ElementsCollection
-          variant="water" speed={1.00} size={1.00} particleAmount={1.00}
-          hue={0} saturation={1.00} brightness={1.00} opacity={1.00}
-          style={{ width: '100%', height: '100%', display: 'block' }}
-        />
+      {/* Animated gradient background - no heavy 3D lib */}
+      <div className="fixed inset-0 z-0 bg-[#070d1c]" aria-hidden="true">
+        <div className="absolute inset-0 bg-gradient-to-br from-[#070d1c] via-[#0a1628] to-[#040810]" />
+        <div className="absolute top-0 left-1/2 -translate-x-1/2 w-[600px] h-[600px] bg-cyan-600/10 rounded-full blur-3xl" />
+        <div className="absolute bottom-0 right-0 w-[400px] h-[400px] bg-blue-900/20 rounded-full blur-3xl" />
       </div>
-      <div className="pointer-events-none fixed inset-0 z-[1] bg-gradient-to-b from-[#060708]/60 via-[#060708]/20 to-[#060708]/80" />
 
       <header className="fixed top-0 left-0 right-0 z-40 flex items-center justify-between px-4 sm:px-6 py-4 pointer-events-none">
         <div className="pointer-events-auto">

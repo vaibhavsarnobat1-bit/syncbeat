@@ -62,45 +62,32 @@ let fallbackTransporter: import("nodemailer").Transporter | null = null;
 
 function getPrimaryTransporter() {
   if (!primaryTransporter) {
-    if (SMTP_HOST === "smtp.gmail.com" || SMTP_USER.endsWith("@gmail.com")) {
-      // Direct Gmail service mode connects via optimized SSL pool (fastest & most reliable)
-      primaryTransporter = nodemailer.createTransport({
-        service: "gmail",
-        auth: { user: SMTP_USER, pass: SMTP_PASS },
-        pool: true,
-        maxConnections: 3,
-        connectionTimeout: 7000,
-        greetingTimeout: 5000,
-        socketTimeout: 10000,
-      });
-    } else if (SMTP_HOST) {
-      const isSecure = SMTP_PORT === 465;
-      primaryTransporter = nodemailer.createTransport({
-        host: SMTP_HOST,
-        port: SMTP_PORT,
-        secure: isSecure,
-        auth: SMTP_USER && SMTP_PASS ? { user: SMTP_USER, pass: SMTP_PASS } : undefined,
-        connectionTimeout: 8000,
-        greetingTimeout: 5000,
-        socketTimeout: 12000,
-        tls: { rejectUnauthorized: false },
-      });
-    }
+    // Always use explicit host/port — avoids Render blocking 'service: gmail' (uses port 25 internally)
+    // Port 465 = SSL direct, most reliable on cloud hosting
+    primaryTransporter = nodemailer.createTransport({
+      host: "smtp.gmail.com",
+      port: 465,
+      secure: true,
+      auth: { user: SMTP_USER, pass: SMTP_PASS },
+      connectionTimeout: 15000,
+      greetingTimeout: 10000,
+      socketTimeout: 20000,
+    });
   }
   return primaryTransporter;
 }
 
 function getFallbackTransporter() {
-  if (!fallbackTransporter && SMTP_HOST) {
-    const fallbackPort = SMTP_PORT === 465 ? 587 : 465;
+  if (!fallbackTransporter) {
+    // Fallback: port 587 STARTTLS if 465 blocked
     fallbackTransporter = nodemailer.createTransport({
-      host: SMTP_HOST,
-      port: fallbackPort,
-      secure: fallbackPort === 465,
-      auth: SMTP_USER && SMTP_PASS ? { user: SMTP_USER, pass: SMTP_PASS } : undefined,
-      connectionTimeout: 8000,
-      greetingTimeout: 5000,
-      socketTimeout: 12000,
+      host: "smtp.gmail.com",
+      port: 587,
+      secure: false,
+      auth: { user: SMTP_USER, pass: SMTP_PASS },
+      connectionTimeout: 15000,
+      greetingTimeout: 10000,
+      socketTimeout: 20000,
       tls: { rejectUnauthorized: false },
     });
   }
