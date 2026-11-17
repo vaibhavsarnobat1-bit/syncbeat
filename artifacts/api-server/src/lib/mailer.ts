@@ -61,20 +61,31 @@ let primaryTransporter: import("nodemailer").Transporter | null = null;
 let fallbackTransporter: import("nodemailer").Transporter | null = null;
 
 function getPrimaryTransporter() {
-  if (!primaryTransporter && SMTP_HOST) {
-    const isSecure = SMTP_PORT === 465;
-    primaryTransporter = nodemailer.createTransport({
-      host: SMTP_HOST,
-      port: SMTP_PORT,
-      secure: isSecure,
-      auth: SMTP_USER && SMTP_PASS ? { user: SMTP_USER, pass: SMTP_PASS } : undefined,
-      connectionTimeout: 12000,
-      greetingTimeout: 8000,
-      socketTimeout: 15000,
-      tls: {
-        rejectUnauthorized: false,
-      },
-    });
+  if (!primaryTransporter) {
+    if (SMTP_HOST === "smtp.gmail.com" || SMTP_USER.endsWith("@gmail.com")) {
+      // Direct Gmail service mode connects via optimized SSL pool (fastest & most reliable)
+      primaryTransporter = nodemailer.createTransport({
+        service: "gmail",
+        auth: { user: SMTP_USER, pass: SMTP_PASS },
+        pool: true,
+        maxConnections: 3,
+        connectionTimeout: 7000,
+        greetingTimeout: 5000,
+        socketTimeout: 10000,
+      });
+    } else if (SMTP_HOST) {
+      const isSecure = SMTP_PORT === 465;
+      primaryTransporter = nodemailer.createTransport({
+        host: SMTP_HOST,
+        port: SMTP_PORT,
+        secure: isSecure,
+        auth: SMTP_USER && SMTP_PASS ? { user: SMTP_USER, pass: SMTP_PASS } : undefined,
+        connectionTimeout: 8000,
+        greetingTimeout: 5000,
+        socketTimeout: 12000,
+        tls: { rejectUnauthorized: false },
+      });
+    }
   }
   return primaryTransporter;
 }
@@ -87,12 +98,10 @@ function getFallbackTransporter() {
       port: fallbackPort,
       secure: fallbackPort === 465,
       auth: SMTP_USER && SMTP_PASS ? { user: SMTP_USER, pass: SMTP_PASS } : undefined,
-      connectionTimeout: 12000,
-      greetingTimeout: 8000,
-      socketTimeout: 15000,
-      tls: {
-        rejectUnauthorized: false,
-      },
+      connectionTimeout: 8000,
+      greetingTimeout: 5000,
+      socketTimeout: 12000,
+      tls: { rejectUnauthorized: false },
     });
   }
   return fallbackTransporter;
