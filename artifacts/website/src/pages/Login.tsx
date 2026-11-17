@@ -7,6 +7,7 @@ import { useAuthStore } from '@/lib/store';
 import { AuthError, loginRequest, registerRequest, forgotPasswordRequest, resetPasswordRequest, resendVerificationRequest, verifyEmailRequest } from '@/lib/authApi';
 import { BrandMark } from '@/components/BrandMark';
 import { ThemeToggle } from '@/components/ThemeToggle';
+import { InputOTP, InputOTPGroup, InputOTPSlot } from '@/components/ui/input-otp';
 import { ElementsCollection } from '@designcodeio/threeui';
 import '@designcodeio/threeui/style.css';
 
@@ -308,9 +309,12 @@ export default function Login() {
       }
     } catch (err: unknown) {
       if (err instanceof AuthError && err.needsVerification) {
-        setVerifyEmail(email.trim().toLowerCase() || verifyEmail);
-        setError('Please verify your email before signing in.');
-        setInfo('Check your inbox, or resend the verification email below.');
+        const targetEmail = err.email || (EMAIL_RE.test(name) ? name : '') || email.trim().toLowerCase() || verifyEmail;
+        if (targetEmail) {
+          setVerifyEmail(targetEmail);
+        }
+        setError('');
+        setInfo(`A 6-digit verification code has been sent to ${targetEmail || 'your email'}. Enter it below to sign in.`);
       } else {
         const message = err instanceof Error ? err.message : 'Please try again';
         if (mode === 'signup' && /taken|already/i.test(message)) {
@@ -437,22 +441,28 @@ export default function Login() {
                 </div>
               )}
 
-              <div className="flex items-center justify-center gap-2 pt-1">
-                <input
+              <div className="flex flex-col items-center gap-2 pt-1">
+                <InputOTP
                   value={otp}
-                  onChange={(e) => {
-                    const clean = e.target.value.replace(/\D/g, '').slice(0, 6);
+                  onChange={(value) => {
+                    const clean = value.replace(/\D/g, '').slice(0, 6);
                     setOtp(clean);
                     if (error) setError('');
                   }}
+                  maxLength={6}
                   inputMode="numeric"
                   autoComplete="one-time-code"
-                  autoFocus
-                  maxLength={6}
-                  pattern="[0-9]*"
-                  placeholder="••••••"
-                  aria-label="6-digit verification code"
-                  className="w-44 px-3 py-3 rounded-xl field-surface text-2xl text-center tracking-[0.45em] font-mono font-bold text-cyan-200 border border-cyan-500/40 focus:border-cyan-400 shadow-sm"
+                  render={({ slots }) => (
+                    <InputOTPGroup className="gap-2">
+                      {slots.map((slot, i) => (
+                        <InputOTPSlot
+                          key={i}
+                          index={i}
+                          className="h-12 w-10 rounded-xl border border-cyan-500/40 bg-white/[0.03] text-xl font-mono font-bold text-cyan-200 shadow-sm transition-all data-[active=true]:border-cyan-400 data-[active=true]:ring-2 data-[active=true]:ring-cyan-400/30 data-[active=true]:scale-105 first:rounded-l-xl last:rounded-r-xl justify-center"
+                        />
+                      ))}
+                    </InputOTPGroup>
+                  )}
                 />
                 {typeof navigator !== 'undefined' && 'clipboard' in navigator && (
                   <button
@@ -465,7 +475,7 @@ export default function Login() {
                       } catch {}
                     }}
                     title="Paste code from clipboard"
-                    className="px-3.5 py-3 rounded-xl bg-white/5 hover:bg-white/10 active:scale-95 text-cyan-300 text-xs font-bold border border-white/10 transition-all cursor-pointer shadow-sm"
+                    className="px-3.5 py-2 rounded-xl bg-white/5 hover:bg-white/10 active:scale-95 text-cyan-300 text-xs font-bold border border-white/10 transition-all cursor-pointer shadow-sm"
                   >
                     Paste
                   </button>
@@ -692,17 +702,26 @@ export default function Login() {
                   <div className="space-y-3.5">
                     <label className="block">
                       <span className="text-[11px] font-bold form-label">Verification code</span>
-                      <input
-                        value={otp}
-                        onChange={(e) => { const clean = e.target.value.replace(/\D/g, '').slice(0, 6); setOtp(clean); if (error) setError(''); }}
-                        inputMode="numeric"
-                        autoComplete="one-time-code"
-                        maxLength={6}
-                        pattern="[0-9]*"
-                        placeholder="••••••"
-                        aria-label="6-digit verification code"
-                        className="mt-1.5 w-full px-3.5 py-3 rounded-xl field-surface text-center text-2xl tracking-[0.45em] font-mono font-bold text-cyan-200 border border-cyan-500/40 focus:border-cyan-400"
-                      />
+                      <div className="mt-1.5 flex justify-center">
+                        <InputOTP
+                          value={otp}
+                          onChange={(value) => { const clean = value.replace(/\D/g, '').slice(0, 6); setOtp(clean); if (error) setError(''); }}
+                          maxLength={6}
+                          inputMode="numeric"
+                          autoComplete="one-time-code"
+                          render={({ slots }) => (
+                            <InputOTPGroup className="gap-2">
+                              {slots.map((slot, i) => (
+                                <InputOTPSlot
+                                  key={i}
+                                  index={i}
+                                  className="h-12 w-10 rounded-xl border border-cyan-500/40 bg-white/[0.03] text-xl font-mono font-bold text-cyan-200 shadow-sm transition-all data-[active=true]:border-cyan-400 data-[active=true]:ring-2 data-[active=true]:ring-cyan-400/30 data-[active=true]:scale-105 first:rounded-l-xl last:rounded-r-xl justify-center"
+                                />
+                              ))}
+                            </InputOTPGroup>
+                          )}
+                        />
+                      </div>
                     </label>
                     <button
                       type="button"

@@ -46,18 +46,18 @@ export function CreatorSignature({ className = "", variant = 'full' }: CreatorSi
         <div className="absolute -inset-1 bg-gradient-to-r from-cyan-500/35 via-blue-500/35 to-emerald-400/35 rounded-full blur-md opacity-60 group-hover:opacity-100 transition duration-500 animate-pulse" />
         
         {/* Glass Container */}
-        <div className="relative flex items-center gap-3 px-6 sm:px-8 py-2.5 rounded-full bg-[#080d1e]/95 backdrop-blur-2xl border border-cyan-400/40 text-slate-300 shadow-[0_0_25px_rgba(34,211,238,0.15)] transition-all duration-300 group-hover:scale-105 group-hover:border-cyan-300/80">
-          <Sparkles className="w-4 h-4 text-cyan-400 group-hover:rotate-45 transition-transform duration-500" />
-          <span className="text-[11px] sm:text-xs font-semibold tracking-wider text-slate-400 uppercase">
+        <div className="relative flex items-center gap-3 px-6 sm:px-8 py-2.5 rounded-full bg-white/95 dark:bg-[#080d1e]/95 backdrop-blur-2xl border border-cyan-400/50 dark:border-cyan-400/40 text-slate-700 dark:text-slate-300 shadow-[0_4px_20px_rgba(34,211,238,0.2)] dark:shadow-[0_0_25px_rgba(34,211,238,0.15)] transition-all duration-300 group-hover:scale-105 group-hover:border-cyan-300/80">
+          <Sparkles className="w-4 h-4 text-cyan-600 dark:text-cyan-400 group-hover:rotate-45 transition-transform duration-500" />
+          <span className="text-[11px] sm:text-xs font-bold tracking-wider text-slate-600 dark:text-slate-400 uppercase">
             Made by
           </span>
           
           {/* Glowing Name */}
-          <span className="font-black text-sm sm:text-base tracking-widest uppercase bg-gradient-to-r from-white via-cyan-100 to-sky-300 bg-clip-text text-transparent drop-shadow-[0_0_14px_rgba(56,189,248,0.7)] group-hover:drop-shadow-[0_0_22px_rgba(56,189,248,0.95)] transition-all">
+          <span className="font-black text-sm sm:text-base tracking-widest uppercase bg-gradient-to-r from-cyan-950 via-sky-800 to-indigo-900 dark:from-white dark:via-cyan-100 dark:to-sky-300 bg-clip-text text-transparent drop-shadow-sm dark:drop-shadow-[0_0_14px_rgba(56,189,248,0.7)] group-hover:drop-shadow-md dark:group-hover:drop-shadow-[0_0_22px_rgba(56,189,248,0.95)] creator-signature-name transition-all">
             Vaibhav Sarnobat
           </span>
 
-          <span className="w-2 h-2 rounded-full bg-emerald-400 shadow-[0_0_10px_#34d399] animate-pulse ml-0.5" />
+          <span className="w-2 h-2 rounded-full bg-emerald-500 dark:bg-emerald-400 shadow-[0_0_10px_#10b981] dark:shadow-[0_0_10px_#34d399] animate-pulse ml-0.5" />
         </div>
       </div>
 
@@ -67,53 +67,53 @@ export function CreatorSignature({ className = "", variant = 'full' }: CreatorSi
         {/* ✉️ EMAIL LINK */}
         <a
           href={`mailto:${EMAIL}`}
-          className="group relative flex items-center gap-3 px-4 py-2.5 rounded-xl bg-gradient-to-b from-white/[0.08] to-white/[0.02] hover:from-sky-500/20 hover:to-cyan-900/30 border border-sky-500/30 hover:border-sky-400/80 backdrop-blur-md transition-all duration-300 hover:scale-[1.04] hover:shadow-[0_0_24px_rgba(56,189,248,0.35)] cursor-pointer"
+          className="group relative flex items-center gap-3 px-4 py-2.5 rounded-xl bg-white/95 dark:bg-gradient-to-b dark:from-white/[0.08] dark:to-white/[0.02] hover:bg-sky-50 dark:hover:from-sky-500/20 dark:hover:to-cyan-900/30 border border-sky-400/40 dark:border-sky-500/30 hover:border-sky-500 dark:hover:border-sky-400/80 backdrop-blur-md shadow-sm dark:shadow-none transition-all duration-300 hover:scale-[1.04] hover:shadow-[0_0_24px_rgba(56,189,248,0.35)] cursor-pointer"
           title={`Click to email ${EMAIL}`}
         >
           {/* 🔵 Neon Stick in front */}
-          <span className="w-1.5 h-6 rounded-full bg-sky-400 shadow-[0_0_10px_#38bdf8] group-hover:scale-y-110 transition-transform duration-300" />
+          <span className="w-1.5 h-6 rounded-full bg-sky-500 dark:bg-sky-400 shadow-[0_0_10px_#38bdf8] group-hover:scale-y-110 transition-transform duration-300" />
 
           {/* Mail Sticker Icon */}
-          <div className="w-7 h-7 rounded-lg bg-sky-500/20 border border-sky-400/50 flex items-center justify-center text-sky-400 group-hover:bg-sky-400 group-hover:text-black transition-colors duration-300 shadow-[0_0_10px_rgba(56,189,248,0.2)]">
+          <div className="w-7 h-7 rounded-lg bg-sky-500/15 dark:bg-sky-500/20 border border-sky-500/30 dark:border-sky-400/50 flex items-center justify-center text-sky-600 dark:text-sky-400 group-hover:bg-sky-500 group-hover:text-white transition-colors duration-300 shadow-[0_0_10px_rgba(56,189,248,0.2)]">
             <Mail className="w-4 h-4" />
           </div>
 
           <div className="flex flex-col text-left">
-            <span className="text-[10px] text-sky-400 font-mono font-bold uppercase tracking-wider flex items-center gap-1">
+            <span className="text-[10px] text-sky-700 dark:text-sky-400 font-mono font-bold uppercase tracking-wider flex items-center gap-1">
               Email
-              <ExternalLink className="w-2.5 h-2.5 opacity-60 group-hover:opacity-100" />
+              <ExternalLink className="w-2.5 h-2.5 opacity-70 group-hover:opacity-100" />
             </span>
-            <span className="text-xs sm:text-sm font-extrabold text-white group-hover:text-sky-300 transition-colors tracking-wide">
+            <span className="text-xs sm:text-sm font-extrabold text-slate-800 dark:text-white group-hover:text-sky-600 dark:group-hover:text-sky-300 transition-colors tracking-wide">
               {EMAIL}
             </span>
           </div>
         </a>
 
         {/* Separator Stick */}
-        <span className="hidden sm:inline-block w-px h-7 bg-white/20" />
+        <span className="hidden sm:inline-block w-px h-7 bg-slate-300 dark:bg-white/20" />
 
         {/* 💼 LINKEDIN PROFILE */}
         <a
           href={LINKEDIN_LINK}
           target="_blank"
           rel="noopener noreferrer"
-          className="group relative flex items-center gap-3 px-4 py-2.5 rounded-xl bg-gradient-to-b from-white/[0.08] to-white/[0.02] hover:from-blue-600/25 hover:to-indigo-950/40 border border-blue-500/30 hover:border-blue-400/80 backdrop-blur-md transition-all duration-300 hover:scale-[1.04] hover:shadow-[0_0_24px_rgba(59,130,246,0.35)] cursor-pointer"
+          className="group relative flex items-center gap-3 px-4 py-2.5 rounded-xl bg-white/95 dark:bg-gradient-to-b dark:from-white/[0.08] dark:to-white/[0.02] hover:bg-blue-50 dark:hover:from-blue-600/25 dark:hover:to-indigo-950/40 border border-blue-400/40 dark:border-blue-500/30 hover:border-blue-500 dark:hover:border-blue-400/80 backdrop-blur-md shadow-sm dark:shadow-none transition-all duration-300 hover:scale-[1.04] hover:shadow-[0_0_24px_rgba(59,130,246,0.35)] cursor-pointer"
           title="View Vaibhav's LinkedIn Profile"
         >
           {/* 🔷 Neon Stick in front */}
-          <span className="w-1.5 h-6 rounded-full bg-blue-500 shadow-[0_0_10px_#3b82f6] group-hover:scale-y-110 transition-transform duration-300" />
+          <span className="w-1.5 h-6 rounded-full bg-blue-600 dark:bg-blue-500 shadow-[0_0_10px_#3b82f6] group-hover:scale-y-110 transition-transform duration-300" />
 
           {/* LinkedIn Sticker Icon */}
-          <div className="w-7 h-7 rounded-lg bg-blue-500/20 border border-blue-400/50 flex items-center justify-center text-blue-400 group-hover:bg-blue-600 group-hover:text-white transition-colors duration-300 shadow-[0_0_10px_rgba(59,130,246,0.2)]">
+          <div className="w-7 h-7 rounded-lg bg-blue-500/15 dark:bg-blue-500/20 border border-blue-500/30 dark:border-blue-400/50 flex items-center justify-center text-blue-600 dark:text-blue-400 group-hover:bg-blue-600 group-hover:text-white transition-colors duration-300 shadow-[0_0_10px_rgba(59,130,246,0.2)]">
             <LinkedInIcon className="w-4 h-4" />
           </div>
 
           <div className="flex flex-col text-left">
-            <span className="text-[10px] text-blue-400 font-mono font-bold uppercase tracking-wider flex items-center gap-1">
+            <span className="text-[10px] text-blue-700 dark:text-blue-400 font-mono font-bold uppercase tracking-wider flex items-center gap-1">
               LinkedIn
-              <ExternalLink className="w-2.5 h-2.5 opacity-60 group-hover:opacity-100" />
+              <ExternalLink className="w-2.5 h-2.5 opacity-70 group-hover:opacity-100" />
             </span>
-            <span className="text-xs sm:text-sm font-extrabold text-white group-hover:text-blue-300 transition-colors tracking-wide">
+            <span className="text-xs sm:text-sm font-extrabold text-slate-800 dark:text-white group-hover:text-blue-600 dark:group-hover:text-blue-300 transition-colors tracking-wide">
               Vaibhav Sarnobat
             </span>
           </div>

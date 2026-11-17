@@ -581,6 +581,26 @@ export async function findUserIdByEmail(email: string): Promise<string | null> {
   return null;
 }
 
+export async function findUserByIdentifier(identifier: string): Promise<AuthUser | null> {
+  const norm = normalizeUsername(identifier);
+  const lowerEmail = String(identifier).trim().toLowerCase();
+  for (const u of memUsersById.values()) {
+    if (u.username.toLowerCase() === norm || (u.email && u.email.toLowerCase() === lowerEmail)) {
+      return storedToUser(u);
+    }
+  }
+  if (!dbUnavailable()) {
+    try {
+      const row = await queryOne<Record<string, unknown>>(
+        `SELECT * FROM users WHERE username=$1 OR lower(email)=$2`,
+        [norm, lowerEmail]
+      );
+      if (row) return rowToUser(row);
+    } catch {}
+  }
+  return null;
+}
+
 export async function sendVerificationForUser(userId: string): Promise<{ ok: boolean; email: string | null; error?: string }> {
   // 6-digit OTP, hashed at rest (never stored in plain text).
   const code = String(randomInt(100000, 999999));

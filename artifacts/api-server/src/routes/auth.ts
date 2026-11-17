@@ -11,6 +11,7 @@ import {
   sendVerificationForUser,
   verifyOtp,
   findUserIdByEmail,
+  findUserByIdentifier,
   createPasswordReset,
   resetPassword,
   upsertGoogleUser,
@@ -170,7 +171,17 @@ router.post("/login", async (req: Request, res: Response) => {
     return;
   }
   if (result === "unverified") {
-    res.status(403).json({ error: "Please verify your email before signing in", needsVerification: true });
+    const user = await findUserByIdentifier(username);
+    let sentEmail: string | null = null;
+    if (user?.id) {
+      const sent = await sendVerificationForUser(user.id);
+      sentEmail = sent.email || user.email || null;
+    }
+    res.status(403).json({
+      error: "Please verify your email before signing in. A fresh 6-digit verification code has been sent to your email.",
+      needsVerification: true,
+      email: sentEmail || (username.includes("@") ? username : undefined),
+    });
     return;
   }
   if (typeof result === "string") {

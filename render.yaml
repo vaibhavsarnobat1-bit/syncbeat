@@ -22,4 +22,3 @@ services:
         value: vkderpwhznjtwxpm
       - key: MAIL_FROM
         value: SyncBeat <msgsena241740@gmail.com>
-

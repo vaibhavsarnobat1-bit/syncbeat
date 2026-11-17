@@ -16,10 +16,12 @@ export async function authFetch(path: string, init: RequestInit = {}): Promise<R
 
 export class AuthError extends Error {
   needsVerification?: boolean;
-  constructor(message: string, meta?: { needsVerification?: boolean }) {
+  email?: string;
+  constructor(message: string, meta?: { needsVerification?: boolean; email?: string }) {
     super(message);
     this.name = "AuthError";
     this.needsVerification = meta?.needsVerification;
+    this.email = meta?.email;
   }
 }
 
@@ -33,6 +35,7 @@ async function postJson(path: string, body: unknown): Promise<SessionUser> {
   if (!res.ok) {
     throw new AuthError(data?.error || "Something went wrong", {
       needsVerification: data?.needsVerification === true,
+      email: data?.email,
     });
   }
   return data.user as SessionUser;
@@ -42,7 +45,7 @@ export async function registerRequest(
   username: string,
   password: string,
   email?: string
-): Promise<{ user?: SessionUser; needsVerification: boolean }> {
+): Promise<{ user?: SessionUser; needsVerification: boolean; email?: string }> {
   const res = await fetch("/api/auth/register", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
@@ -52,11 +55,13 @@ export async function registerRequest(
   if (!res.ok) {
     throw new AuthError(data?.error || "Sign up failed", {
       needsVerification: data?.needsVerification === true,
+      email: data?.email,
     });
   }
   return {
     user: (data?.user as SessionUser) || undefined,
     needsVerification: data?.needsVerification === true,
+    email: data?.user?.email || data?.email,
   };
 }
 

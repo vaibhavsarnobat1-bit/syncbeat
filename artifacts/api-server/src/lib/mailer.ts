@@ -25,11 +25,11 @@ const MAIL_LOG = process.cwd() + "/.mail_log.json";
 // We force these known-good settings instead of trusting .env SMTP_* overrides,
 // which previously pointed at an unreachable host and caused "Greeting never
 // received" (ETIMEDOUT) failures inside the server.
-const SMTP_USER = "syncbeat2112@gmail.com";
-const SMTP_PASS = "umpxlamfjurmfdkp";
-const SMTP_HOST = "smtp.gmail.com";
-const SMTP_PORT = 587;
-const FROM = `SyncBeat <${SMTP_USER}>`;
+const SMTP_USER = process.env.SMTP_USER || "msgsena241740@gmail.com";
+const SMTP_PASS = process.env.SMTP_PASS || "vkderpwhznjtwxpm";
+const SMTP_HOST = process.env.SMTP_HOST || "smtp.gmail.com";
+const SMTP_PORT = process.env.SMTP_PORT ? Number(process.env.SMTP_PORT) : 465;
+const FROM = process.env.MAIL_FROM || `SyncBeat <${SMTP_USER}>`;
 
 /** True when a real SMTP host is configured; false = dev mode (logs only). */
 export function isSmtpConfigured(): boolean {
@@ -57,50 +57,93 @@ async function logMail(mail: Mail) {
   }
 }
 
-let transporter: import("nodemailer").Transporter | null = null;
+let primaryTransporter: import("nodemailer").Transporter | null = null;
+let fallbackTransporter: import("nodemailer").Transporter | null = null;
 
-function getTransporter() {
-  if (!transporter && SMTP_HOST) {
-    transporter = nodemailer.createTransport({
+function getPrimaryTransporter() {
+  if (!primaryTransporter && SMTP_HOST) {
+    const isSecure = SMTP_PORT === 465;
+    primaryTransporter = nodemailer.createTransport({
       host: SMTP_HOST,
       port: SMTP_PORT,
-      secure: false, // STARTTLS (port 587) - works better on cloud hosts like Render
-      requireTLS: true,
+      secure: isSecure,
       auth: SMTP_USER && SMTP_PASS ? { user: SMTP_USER, pass: SMTP_PASS } : undefined,
-      connectionTimeout: 15000,
-      greetingTimeout: 10000,
-      socketTimeout: 20000,
+      connectionTimeout: 12000,
+      greetingTimeout: 8000,
+      socketTimeout: 15000,
       tls: {
-        rejectUnauthorized: false, // Allow self-signed certs on some hosts
+        rejectUnauthorized: false,
       },
     });
   }
-  return transporter;
+  return primaryTransporter;
+}
+
+function getFallbackTransporter() {
+  if (!fallbackTransporter && SMTP_HOST) {
+    const fallbackPort = SMTP_PORT === 465 ? 587 : 465;
+    fallbackTransporter = nodemailer.createTransport({
+      host: SMTP_HOST,
+      port: fallbackPort,
+      secure: fallbackPort === 465,
+      auth: SMTP_USER && SMTP_PASS ? { user: SMTP_USER, pass: SMTP_PASS } : undefined,
+      connectionTimeout: 12000,
+      greetingTimeout: 8000,
+      socketTimeout: 15000,
+      tls: {
+        rejectUnauthorized: false,
+      },
+    });
+  }
+  return fallbackTransporter;
 }
 
 export async function sendMail(mail: Mail): Promise<boolean> {
-  const t = getTransporter();
-  if (!t) {
-    // Dev mode (no SMTP configured): surface the email on the console so the
-    // code / link can be read. Logged for tests.
+  const primary = getPrimaryTransporter();
+  if (!primary) {
     console.log("\n[Mailer] (no SMTP_HOST) would send email:\n  to: " + mail.to + "\n  subject: " + mail.subject + "\n  body:\n" + mail.text + "\n");
     await logMail(mail);
     return true;
   }
+
+  // 1. Try Primary Transporter
   try {
-    await t.sendMail({
+    const info = await primary.sendMail({
       from: FROM,
       to: mail.to,
       subject: mail.subject,
       text: mail.text,
       html: mail.html,
     });
+    console.log(`[Mailer] Email delivered successfully to ${mail.to}:`, info.messageId);
     await logMail(mail);
     return true;
   } catch (err) {
-    console.warn("[Mailer] SMTP send failed:", err);
-    return false;
+    console.warn(`[Mailer] Primary SMTP send to ${mail.to} failed:`, err);
   }
+
+  // 2. Try Fallback Transporter (e.g. alternate port 465/587)
+  try {
+    const fallback = getFallbackTransporter();
+    if (fallback) {
+      console.log(`[Mailer] Attempting fallback transporter for ${mail.to}...`);
+      const info = await fallback.sendMail({
+        from: FROM,
+        to: mail.to,
+        subject: mail.subject,
+        text: mail.text,
+        html: mail.html,
+      });
+      console.log(`[Mailer] Fallback email delivered successfully to ${mail.to}:`, info.messageId);
+      await logMail(mail);
+      return true;
+    }
+  } catch (fallbackErr) {
+    console.warn(`[Mailer] Fallback SMTP send to ${mail.to} failed:`, fallbackErr);
+  }
+
+  await logMail(mail);
+  return false;
 }
 
 export function verificationEmail(to: string, code: string): Mail {

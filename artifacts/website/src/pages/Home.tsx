@@ -11,6 +11,7 @@ import { CreatorSignature } from '@/components/layout/CreatorSignature';
 import { AppDownloadSection } from '@/components/AppDownloadSection';
 import { AppDownloadModal } from '@/components/AppDownloadModal';
 import { HeroMusicScene3D } from '@/components/3d/HeroMusicScene3D';
+import { WeightWave } from '@/components/sections/WeightWave';
 import { BrandMark } from '@/components/BrandMark';
 import { ThemeToggle } from '@/components/ThemeToggle';
 
@@ -342,7 +343,7 @@ export default function Home() {
             </button>
             <button
               onClick={() => setLocation('/login')}
-              className="hidden sm:inline-flex px-4 py-2 rounded-full text-xs sm:text-sm font-semibold text-slate-300 hover:text-white hover:bg-white/[0.06] border border-white/[0.08] hover:border-white/20 transition-all duration-200"
+              className="hidden sm:inline-flex px-4 py-2 rounded-full text-xs sm:text-sm font-semibold text-slate-700 dark:text-slate-300 hover:text-foreground hover:bg-slate-100 dark:hover:bg-white/[0.06] border border-slate-300 dark:border-white/[0.08] transition-all duration-200 cursor-pointer"
             >
               Login
             </button>
@@ -358,24 +359,14 @@ export default function Home() {
           {/* Centered Hero Section (matching reference screenshot) */}
           <div className="max-w-4xl mx-auto flex flex-col items-center justify-center text-center pt-2 sm:pt-4 mb-10 sm:mb-14">
             
-            {/* Animated Equalizer Sound Bars */}
+            {/* Weight Wave — spring-driven animated sound bars */}
             <motion.div
               initial={{ opacity: 0, scale: 0.8 }}
               animate={{ opacity: 1, scale: 1 }}
               transition={{ duration: 0.5 }}
-              className="flex items-end justify-center gap-1.5 h-10 sm:h-12 mb-5"
+              className="mb-6"
             >
-              {[22, 38, 16, 42, 28, 48, 20, 52, 30, 44, 18, 40, 26, 36].map((h, i) => (
-                <span
-                  key={i}
-                  className="w-1.5 sm:w-2 rounded-full bg-gradient-to-t from-[#06b6d4] via-[#38bdf8] to-[#818cf8]"
-                  style={{
-                    height: `${h}px`,
-                    animation: `soundwave 1.1s ease-in-out infinite alternate`,
-                    animationDelay: `${(i % 5) * 0.16}s`,
-                  }}
-                />
-              ))}
+              <WeightWave className="h-20" />
             </motion.div>
 
             {/* Huge Bold Title — Perfectly Centered on Mobile & Laptop */}
